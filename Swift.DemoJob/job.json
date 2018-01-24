@@ -1,0 +1,6 @@
+﻿{
+  "Name": "DemoJob",
+  "FileName": "Swift.DemoJob.exe",
+  "JobClassName": "Swift.DemoJob.DemoJob",
+  "RunTimePlan": [ "15:58" ]
+}

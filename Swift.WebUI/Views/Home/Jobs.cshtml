@@ -1,0 +1,58 @@
+﻿@model IEnumerable<Swift.Core.JobConfig>
+
+@{
+    ViewBag.Title = "作业";
+}
+
+<h2>集群 @ViewBag.ClusterName 作业</h2>
+
+<p>
+    <a class="btn btn-info" href="javascript:history.back()">返回</a>
+</p>
+<table class="table table-striped table-hover">
+    <tr>
+        <th>
+            作业名称
+        </th>
+        <th>
+            可执行文件名称
+        </th>
+        <th>
+            定时执行时间
+        </th>
+        <th>
+            最新执行Id
+        </th>
+        <th>
+            最新执行启动时间
+        </th>
+        <th>
+            历史记录
+        </th>
+    </tr>
+
+    @foreach (var item in Model)
+    {
+        <tr>
+            <td>
+                @Html.DisplayFor(modelItem => item.Name)
+            </td>
+            <td>
+                @Html.DisplayFor(modelItem => item.FileName)
+            </td>
+            <td>
+                @string.Join(",", item.RunTimePlan)
+            </td>
+            <td>
+                @Html.DisplayFor(modelItem => item.LastRecordId)
+            </td>
+            <td>
+                @Html.DisplayFor(modelItem => item.LastRecordStartTime)
+            </td>
+            <td>
+                @Html.ActionLink("查看", "JobRecords", new { job = item.Name, cluster = ViewBag.ClusterName })
+            </td>
+        </tr>
+    }
+
+</table>

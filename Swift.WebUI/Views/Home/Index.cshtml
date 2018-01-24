@@ -1,0 +1,29 @@
+﻿@model IEnumerable<Swift.Core.Cluster>
+@{
+    ViewBag.Title = "管理中心";
+}
+
+<div class="jumbotron">
+    <p class="lead">Swift是一个分布式作业处理框架，支持将任务分发到多台机器并行处理，可成倍提升数据处理速度。</p>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <h2>当前集群</h2>
+        <table class="table table-striped table-hover ">
+            <tr>
+                <th>集群名称</th>
+                <th>成员</th>
+                <th>作业</th>
+            </tr>
+            @foreach (var item in Model)
+            {
+                <tr>
+                    <td>@Html.DisplayFor(modelItem => item.Name)</td>
+                    <td>@Html.ActionLink("查看", "Members", new { cluster = item.Name })</td>
+                    <td>@Html.ActionLink("查看", "Jobs", new { cluster = item.Name })</td>
+                </tr>
+            }
+        </table>
+    </div>
+</div>
