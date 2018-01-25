@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using Consul;
+using Newtonsoft.Json;
 using Swift.Core;
 using Swift.Core.Consul;
 using System;
@@ -133,53 +134,27 @@ namespace Swift.WebUI.Controllers
         /// </summary>
         private List<Member> GetMembersFromConsul(string clusterName)
         {
-            List<Member> currentMembers = new List<Member>();
-            string managerStr = ConsulKV.GetValueString(string.Format("Swift/{0}/Members/Manager", clusterName));
-            var workersStr = ConsulKV.GetValueString(string.Format("Swift/{0}/Members/Worker", clusterName));
-
-            // 添加经理
-            if (!string.IsNullOrWhiteSpace(managerStr))
+            var memberKey = string.Format("Swift/{0}/Members", clusterName);
+            KVPair memberKV = ConsulKV.Get(memberKey);
+            if (memberKV == null)
             {
-                var manager = new Manager()
-                {
-                    Id = managerStr,
-                    Role = EnumMemberRole.Manager,
-                    Status = 0,
-                };
-                currentMembers.Add(manager);
+                memberKV = ConsulKV.Create(memberKey);
             }
 
-            // 添加工人
-            if (!string.IsNullOrWhiteSpace(workersStr))
+            var configMemberList = new List<MemberWrapper>();
+            if (memberKV.Value != null)
             {
-                var workersStrArray = workersStr.Split(',');
-                foreach (var workerStr in workersStrArray)
-                {
-                    if (!string.IsNullOrWhiteSpace(workersStr))
-                    {
-                        var worker = new Worker()
-                        {
-                            Id = workerStr,
-                            Role = EnumMemberRole.Worker,
-                            Status = 0,
-                        };
-
-                        currentMembers.Add(worker);
-                    }
-                }
+                configMemberList = JsonConvert.DeserializeObject<List<MemberWrapper>>(Encoding.UTF8.GetString(memberKV.Value));
             }
 
-            // 通过服务发现检查集群成员的健康状态
-            foreach (var member in currentMembers)
+            List<MemberWrapper> needRemoveList = new List<MemberWrapper>();
+            foreach (var configMember in configMemberList)
             {
-                var isHealth = ConsulService.CheckHealth(member.Id);
-                if (isHealth)
-                {
-                    member.Status = 1;
-                }
+                var isHealth = ConsulService.CheckHealth(configMember.Id);
+                configMember.Status = isHealth ? 1 : 0;
             }
 
-            return currentMembers;
+            return configMemberList.Select(d => d.ConvertToBase()).ToList();
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using Consul;
+using Newtonsoft.Json;
 using Swift.Core.Consul;
 using Swift.Core.ExtensionException;
 using System;
@@ -228,6 +229,8 @@ namespace Swift.Core
                 this.localIP = GetLocalIP();
             }
 
+            RegisterToConsul();
+
             jobConfigs = new List<JobConfig>();
             activedJobs = new List<JobBase>();
             activedTasks = new List<JobTask>();
@@ -244,12 +247,17 @@ namespace Swift.Core
         private Timer memberRefreshTimer;
 
         /// <summary>
+        /// 指示是否正在刷新成员
+        /// </summary>
+        private bool isRefreshingMembers = false;
+
+        /// <summary>
         /// 监控成员变化
         /// </summary>
         public void MonitorMember()
         {
             RefreshMembers(null);
-            memberRefreshTimer = new Timer(new TimerCallback(RefreshMembers), null, 3000, 3000);
+            memberRefreshTimer = new Timer(new TimerCallback(RefreshMembers), null, 3000, 5000);
         }
 
         /// <summary>
@@ -265,11 +273,18 @@ namespace Swift.Core
         /// </summary>
         private void RefreshMembers(object state)
         {
+            if (isRefreshingMembers)
+            {
+                return;
+            }
+
+            isRefreshingMembers = true;
+
             WriteLog("开始刷新内存集群成员...");
 
             try
             {
-                UpdateMemoryMembers();
+                UpdateMembers();
             }
             catch (Exception ex)
             {
@@ -278,21 +293,36 @@ namespace Swift.Core
             }
 
             currentMember = members.Where(d => d.Id == localIP).FirstOrDefault();
-            manager = (Manager)members.Where(d => d.Role == EnumMemberRole.Manager).FirstOrDefault();
+            manager = members.Where(d => d.Role == EnumMemberRole.Manager).Select(d => (Manager)d).FirstOrDefault();
             workers = members.Where(d => d.Role == EnumMemberRole.Worker).Select(d => (Worker)d).ToArray();
+
+            isRefreshingMembers = false;
 
             WriteLog("结束刷新内存集群成员。");
         }
 
         /// <summary>
-        /// 更新内存中的成员
+        /// 更新成员集合
         /// </summary>
-        private void UpdateMemoryMembers()
+        private void UpdateMembers()
         {
             var latestMembers = GetMembersFromConsul();
             if (members == null)
             {
                 members = new List<Member>();
+            }
+
+            // 更新成员状态
+            for (int i = members.Count - 1; i >= 0; i--)
+            {
+                var member = members[i];
+                var latestMember = latestMembers.Where(d => d.Id == member.Id).FirstOrDefault();
+                if (latestMember != null)
+                {
+                    member.Status = latestMember.Status;
+                    member.OnlineTime = latestMember.OnlineTime;
+                    member.OfflineTime = latestMember.OfflineTime;
+                }
             }
 
             // 获取新增的Member
@@ -308,8 +338,9 @@ namespace Swift.Core
 
             // 获取移除的Member
             List<Member> removeMemberList = new List<Member>();
-            foreach (var member in members)
+            for (int i = members.Count - 1; i >= 0; i--)
             {
+                var member = members[i];
                 var newMember = latestMembers.Where(d => d.Id == member.Id).FirstOrDefault();
                 if (newMember == null)
                 {
@@ -353,248 +384,211 @@ namespace Swift.Core
         /// <param name="role"></param>
         public Member RegisterMember(string memberId, EnumMemberRole role)
         {
-            // 创建当前成员
-            var currentMember = members.Where(d => d.Id == memberId).FirstOrDefault();
-            if (currentMember != null)
+            MemberWrapper member = new MemberWrapper()
             {
-                WriteLog("当前成员已加入过集群。");
-            }
+                Id = memberId,
+                Role = role,
+                FirstRegisterTime = DateTime.Now,
+                OnlineTime = DateTime.Now,
+                Status = 1,
+            };
 
-            try
+            int tryTimes = 3;
+            while (tryTimes > 0)
             {
-                // 注册经理
-                if (role == EnumMemberRole.Manager)
+                try
                 {
-                    RegisterManager(memberId, currentMember);
-                }
+                    List<Member> latestMembers;
+                    while (!TrySetMember(member, out latestMembers))
+                    {
+                        Thread.Sleep(1000);
+                    }
 
-                // 注册工人
-                if (role == EnumMemberRole.Worker)
+                    members = latestMembers;
+                    break;
+                }
+                catch (Exception ex)
                 {
-                    RegisterWorker(memberId, currentMember);
+                    tryTimes--;
+                    WriteLog(string.Format("注册成员出现异常，还会重试{0}次：{1}", tryTimes, ex.Message));
+                    Thread.Sleep(2000);
                 }
             }
-            catch (Exception ex)
-            {
-                WriteLog(string.Format("出现异常：{0}", ex.Message));
-            }
-
-            // 刷新到最新配置
-            RefreshMembers(null);
 
             return members.Where(d => d.Id == memberId).FirstOrDefault();
         }
 
         /// <summary>
-        /// 注册为Manager
+        /// 尝试设置成员
         /// </summary>
-        private void RegisterManager(string memberId, Member currentMember)
+        /// <returns></returns>
+        private bool TrySetMember(Member member, out List<Member> latestMemberList)
         {
-            // 经理已经存在
-            if (Manager != null)
+            latestMemberList = null;
+
+            List<Member> memberList = GetMembersFromConsul();
+
+            if (member.Role == EnumMemberRole.Manager)
             {
-                // 不是当前成员
-                if (Manager.Id != memberId)
+                var currentManager = memberList.Where(d => d.Role == EnumMemberRole.Manager && d.Status == 1).FirstOrDefault();
+                if (currentManager != null && currentManager.Id != member.Id)
                 {
-                    throw new Exception(string.Format("注册为Manager错误，已经存在:{0}", Manager.Id));
+                    throw new Exception(string.Format("不能注册为Manager，已经存在:{0}", Manager.Id));
                 }
-                else
-                {
-                    WriteLog("当前成员已经是Manager。");
-                }
+            }
+
+            Member historyMember;
+            if (memberList.Where(d => d.Id == member.Id).Any())
+            {
+                historyMember = memberList.Where(d => d.Id == member.Id).FirstOrDefault();
+
+                historyMember.Status = 1;
+                historyMember.Role = member.Role;
+                historyMember.OnlineTime = DateTime.Now;
             }
             else
             {
-                if (currentMember != null)
-                {
-                    WriteLog(string.Format("当前成员的历史角色为:{0}，将尝试移除", currentMember.Role.ToString()));
-                    while (!TryRemoveMember(memberId, currentMember.Role))
-                    {
-                        Thread.Sleep(100);
-                    }
-                    WriteLog(string.Format("成员的历史角色已经移除。"));
-                }
-
-                var setResult = TrySetManager(memberId, EnumMemberRole.Manager);
-
-                if (!setResult)
-                {
-                    WriteLog(string.Format("当前成员注册失败，角色被强占。"));
-                    return;
-                }
-
-                WriteLog(string.Format("当前成员注册为Manager成功。"));
-            }
-        }
-
-        /// <summary>
-        /// 注册为Worker
-        /// </summary>
-        private void RegisterWorker(string memberId, Member currentMember)
-        {
-            if (currentMember != null && currentMember.Role != EnumMemberRole.Worker)
-            {
-                WriteLog(string.Format("当前成员的历史角色为:{0}，将尝试移除", currentMember.Role.ToString()));
-                while (!TryRemoveMember(memberId, currentMember.Role))
-                {
-                    Thread.Sleep(100);
-                }
-                WriteLog(string.Format("成员的历史角色已经移除", currentMember.Role.ToString()));
+                memberList.Add(member);
             }
 
-            // 可尝试多次，普通工人越多越好
-            while (!TrySetWorker(memberId))
-            {
-                Thread.Sleep(100);
-            }
-
-            WriteLog(string.Format("当前成员注册为Worker成功。"));
-        }
-
-        /// <summary>
-        /// 尝试设置成员为经理：只能设置一次
-        /// </summary>
-        /// <param name="memberId"></param>
-        /// <param name="role"></param>
-        /// <returns></returns>
-        private bool TrySetManager(string memberId, EnumMemberRole role)
-        {
-            var memberKey = string.Format("Swift/{0}/Members/{1}", Name, role.ToString());
-            var memberKV = ConsulKV.Get(memberKey);
-            if (memberKV == null)
-            {
-                memberKV = ConsulKV.Create(memberKey);
-            }
-            var memberKVV = memberKV.Value != null ? Encoding.UTF8.GetString(memberKV.Value) : string.Empty;
-
-            if (memberId != memberKVV)
-            {
-                memberKV.Value = Encoding.UTF8.GetBytes(memberId);
-                return ConsulKV.CAS(memberKV);
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// 尝试设置成员为普通工人：可连续多次尝试设置
-        /// </summary>
-        /// <param name="memberId"></param>
-        /// <returns></returns>
-        private bool TrySetWorker(string memberId)
-        {
-            var memberKey = string.Format("Swift/{0}/Members/{1}", Name, "Worker");
-            var memberKV = ConsulKV.Get(memberKey);
+            // 更新到Consul中
+            var memberKey = string.Format("Swift/{0}/Members", Name);
+            KVPair memberKV = ConsulKV.Get(memberKey);
             if (memberKV == null)
             {
                 memberKV = ConsulKV.Create(memberKey);
             }
 
-            var memberKVV = memberKV.Value != null ? Encoding.UTF8.GetString(memberKV.Value) : string.Empty;
-
-            var workers = memberKVV.Split(',').ToList();
-            if (!workers.Contains(memberId))
+            memberKV.Value = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(memberList));
+            var result = ConsulKV.CAS(memberKV);
+            if (result)
             {
-                workers.Add(memberId);
-                var workersStr = string.Join(",", workers.Where(d => !string.IsNullOrWhiteSpace(d)).ToArray());
-                memberKV.Value = Encoding.UTF8.GetBytes(workersStr);
-
-                return ConsulKV.CAS(memberKV);
+                latestMemberList = memberList;
             }
 
-            return true;
-        }
-
-        /// <summary>
-        /// 尝试移除成员，如果数据已经变更，将移除失败。
-        /// 对于Manager和ViceManager只有为当前成员时才移除，对于Worker只有包含当前成员时才移除,同时使用Check ModifyIndex And Set机制，不会造成脏数据问题。
-        /// </summary>
-        /// <param name="memberId"></param>
-        /// <param name="role"></param>
-        private bool TryRemoveMember(string memberId, EnumMemberRole role)
-        {
-            var memberKV = ConsulKV.Get(string.Format("Swift/{0}/Members/{1}", Name, role.ToString()));
-            var memberKVV = Encoding.UTF8.GetString(memberKV.Value);
-
-            if (role == EnumMemberRole.Manager)
-            {
-                if (memberId == memberKVV)
-                {
-                    memberKV.Value = new byte[0];
-
-                    return ConsulKV.CAS(memberKV);
-                }
-            }
-
-            if (role == EnumMemberRole.Worker)
-            {
-                var workers = memberKVV.Split(',');
-                if (workers.Contains(memberId))
-                {
-                    var workersStr = string.Join(",", workers.Where(d => d != memberId).ToArray());
-                    memberKV.Value = Encoding.UTF8.GetBytes(workersStr);
-
-                    return ConsulKV.CAS(memberKV);
-                }
-            }
-
-            return true;
+            return result;
         }
 
         /// <summary>
         /// 从Consul加载集群成员
         /// </summary>
-        private Member[] GetMembersFromConsul()
+        private List<Member> GetMembersFromConsul()
         {
-            List<Member> currentMembers = new List<Member>();
-            string managerStr = ConsulKV.GetValueString(string.Format("Swift/{0}/Members/Manager", Name));
-            var workersStr = ConsulKV.GetValueString(string.Format("Swift/{0}/Members/Worker", Name));
-
-            // 添加经理
-            if (!string.IsNullOrWhiteSpace(managerStr))
+            List<MemberWrapper> configMemberList;
+            while (!GetValidMembersFromConsul(out configMemberList))
             {
-                var manager = new Manager()
-                {
-                    Id = managerStr,
-                    Role = EnumMemberRole.Manager,
-                    Status = 0,
-                    Cluster = this,
-                };
-                currentMembers.Add(manager);
+                Thread.Sleep(1000);
             }
 
-            // 添加工人
-            if (!string.IsNullOrWhiteSpace(workersStr))
+            List<Member> memberList = new List<Member>();
+            foreach (var configMember in configMemberList)
             {
-                var workersStrArray = workersStr.Split(',');
-                foreach (var workerStr in workersStrArray)
+                Member member = null;
+                if (configMember.Role == EnumMemberRole.Manager)
                 {
-                    if (!string.IsNullOrWhiteSpace(workersStr))
-                    {
-                        var worker = new Worker()
-                        {
-                            Id = workerStr,
-                            Role = EnumMemberRole.Worker,
-                            Status = 0,
-                            Cluster = this,
-                        };
+                    member = configMember.ConvertTo<Manager>();
+                }
+                else if (configMember.Role == EnumMemberRole.Worker)
+                {
+                    member = configMember.ConvertTo<Worker>();
+                }
+                member.Cluster = this;
+                memberList.Add(member);
+            }
 
-                        currentMembers.Add(worker);
+            return memberList;
+        }
+
+        /// <summary>
+        /// 从Consul获取经过检查的有效成员
+        /// </summary>
+        /// <param name="configMemberList"></param>
+        /// <returns></returns>
+        private bool GetValidMembersFromConsul(out List<MemberWrapper> configMemberList)
+        {
+            var memberKey = string.Format("Swift/{0}/Members", Name);
+            KVPair memberKV = ConsulKV.Get(memberKey);
+            if (memberKV == null)
+            {
+                memberKV = ConsulKV.Create(memberKey);
+            }
+
+            configMemberList = new List<MemberWrapper>();
+            if (memberKV.Value != null)
+            {
+                configMemberList = JsonConvert.DeserializeObject<List<MemberWrapper>>(Encoding.UTF8.GetString(memberKV.Value));
+            }
+
+            bool isNeedUpdateConfig = false;
+            List<MemberWrapper> needRemoveList = new List<MemberWrapper>();
+            foreach (var configMember in configMemberList)
+            {
+                var isHealth = ConsulService.CheckHealth(configMember.Id);
+                configMember.Status = isHealth ? 1 : 0;
+
+                if (configMember.Status == 0)
+                {
+                    // 还没设置离线时间，马上设置一个
+                    if (!configMember.OfflineTime.HasValue)
+                    {
+                        isNeedUpdateConfig = true;
+                        configMember.OfflineTime = DateTime.Now;
+                    }
+                    else
+                    {
+                        // 离线超过3个小时了，移除成员配置
+                        if (DateTime.Now.Subtract(configMember.OfflineTime.Value).TotalHours > 3)
+                        {
+                            needRemoveList.Add(configMember);
+                        }
                     }
                 }
             }
 
-            // 通过服务发现检查集群成员的健康状态
-            foreach (var member in currentMembers)
+            // 从集合中移除成员配置
+            if (needRemoveList.Count > 0)
             {
-                var isHealth = ConsulService.CheckHealth(member.Id);
-                if (isHealth)
+                isNeedUpdateConfig = true;
+                foreach (var config in needRemoveList)
                 {
-                    member.Status = 1;
+                    configMemberList.Remove(config);
                 }
             }
 
-            return currentMembers.ToArray();
+            // 更新到Consul中
+            if (isNeedUpdateConfig)
+            {
+                memberKV.Value = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(configMemberList));
+                return ConsulKV.CAS(memberKV);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 注册到Consul
+        /// </summary>
+        private void RegisterToConsul()
+        {
+            ConsulService.RegisterService(localIP, localIP, 15);
+
+            Task.Factory.StartNew(() =>
+            {
+                while (true)
+                {
+                    try
+                    {
+                        ConsulService.PassTTL(localIP);
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteLog(string.Format("Consul健康检测PassTTL异常:{0}", ex.Message + ex.StackTrace));
+                        Thread.Sleep(1000);
+                    }
+
+                    Thread.Sleep(10000);
+                }
+            });
         }
         #endregion
 

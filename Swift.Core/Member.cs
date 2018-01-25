@@ -13,7 +13,7 @@ namespace Swift.Core
     /// <summary>
     /// 集群成员
     /// </summary>
-    public abstract class Member
+    public class Member
     {
         /// <summary>
         /// 通信器
@@ -31,6 +31,7 @@ namespace Swift.Core
         /// <summary>
         /// 当前成员所属集群
         /// </summary>
+        [JsonIgnore]
         public Cluster Cluster
         {
             get;
@@ -53,8 +54,36 @@ namespace Swift.Core
         public EnumMemberRole Role { get; set; }
 
         /// <summary>
+        /// 首次注册时间
+        /// </summary>
+        public DateTime? FirstRegisterTime
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// 上线时间
+        /// </summary>
+        public DateTime? OnlineTime
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// 离线时间
+        /// </summary>
+        public DateTime? OfflineTime
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
         /// 获取通信器地址
         /// </summary>
+        [JsonIgnore]
         public string CommunicationAddress
         {
             get
@@ -66,12 +95,16 @@ namespace Swift.Core
         /// <summary>
         /// 开始处理
         /// </summary>
-        protected abstract void Start();
+        protected virtual void Start()
+        {
+        }
 
         /// <summary>
         /// 停止处理
         /// </summary>
-        protected abstract void Stop();
+        protected virtual void Stop()
+        {
+        }
 
         /// <summary>
         /// 开张
@@ -257,7 +290,7 @@ namespace Swift.Core
             fileName = HttpUtility.UrlDecode(fileName);
 
             string filePath = Path.Combine(Environment.CurrentDirectory, fileName.Replace('/', Path.DirectorySeparatorChar));
-            WriteLog(string.Format("下载文件本地地址:{0}",filePath));
+            WriteLog(string.Format("下载文件本地地址:{0}", filePath));
 
             return File.ReadAllBytes(filePath);
         }
