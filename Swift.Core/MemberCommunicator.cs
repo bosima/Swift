@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Swift.Core.Log;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -79,8 +80,8 @@ namespace Swift.Core
         public void SendRequest(Member member, string msgType, byte[] msgData)
         {
             string url = string.Format("{0}{1}", member.CommunicationAddress, msgType);
-            WriteLog("通信路径：" + url);
-            WriteLog(string.Format("数据大小：{0}", msgData.LongLength));
+            LogWriter.Write("通信路径：" + url);
+            LogWriter.Write(string.Format("数据大小：{0}", msgData.LongLength));
 
             // TODO:使用HttpClient更多可以自定义
             // TODO:重试3次，如果还不行则抛出异常
@@ -92,11 +93,11 @@ namespace Swift.Core
             var response = Newtonsoft.Json.JsonConvert.DeserializeObject<CommunicationResponse>(resultStr);
             if (response.ErrCode == 0)
             {
-                WriteLog("消息发送成功！");
+                LogWriter.Write("消息发送成功！");
             }
             else
             {
-                WriteLog("消息发送失败:" + response.ErrMsg);
+                LogWriter.Write("消息发送失败:" + response.ErrMsg);
             }
         }
 
@@ -119,7 +120,7 @@ namespace Swift.Core
             string url = string.Format("{0}{1}{2}", member.CommunicationAddress, msgType,
                 (!string.IsNullOrWhiteSpace(paraStr) ? "?" + paraStr.TrimStart('&') : string.Empty));
 
-            WriteLog("通信路径：" + url);
+            LogWriter.Write("通信路径：" + url);
 
             WebClient client = new WebClient();
             var result = client.DownloadData(url);
@@ -163,15 +164,6 @@ namespace Swift.Core
                 writer.Close();
                 context.Response.Close();
             }
-        }
-
-        /// <summary>
-        /// 写日志
-        /// </summary>
-        /// <param name="message"></param>
-        protected void WriteLog(string message)
-        {
-            Console.WriteLine("{0} {1}", DateTime.Now.ToString(), message);
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Swift.Core.Log;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -38,7 +39,7 @@ namespace Swift.Core
             listener = new HttpListener();
             listener.Prefixes.Add(BaseUrl);
             listener.Start();
-            WriteLog(string.Format("HttpServer已经启动：http://{0}:{1}", serverIp, serverPort));
+            LogWriter.Write(string.Format("HttpServer已经启动：http://{0}:{1}", serverIp, serverPort));
 
             listener.BeginGetContext(new AsyncCallback(GetContextCallBack), listener);
         }
@@ -75,17 +76,8 @@ namespace Swift.Core
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message);
+                LogWriter.Write("异步处理Http请求异常", ex);
             }
-        }
-
-        /// <summary>
-        /// 写日志
-        /// </summary>
-        /// <param name="message"></param>
-        private void WriteLog(string message)
-        {
-            Console.WriteLine(string.Format("{0} {1}", DateTime.Now.ToString(), message));
         }
     }
 }

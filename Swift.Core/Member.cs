@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using Swift.Core.Log;
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
@@ -171,7 +172,7 @@ namespace Swift.Core
         {
             if (communicator == null)
             {
-                WriteLog("通信器未开");
+                LogWriter.Write("通信器未开");
             }
 
             communicator.Download(member, msgType, paras);
@@ -186,7 +187,7 @@ namespace Swift.Core
         private void ProcessDownloadDataCompleted(string msgType, Dictionary<string, string> paras, byte[] data)
         {
             var fileName = paras["fileName"];
-            WriteLog(string.Format("收到下载数据：{0},{1}", msgType, fileName));
+            LogWriter.Write(string.Format("收到下载数据：{0},{1}", msgType, fileName));
 
             if (msgType == "download/job/package")
             {
@@ -229,7 +230,7 @@ namespace Swift.Core
         /// <param name="context"></param>
         private byte[] ProcessRequest(System.Net.HttpListenerContext context)
         {
-            WriteLog(string.Format("收到消息：{0}", context.Request.RawUrl));
+            LogWriter.Write(string.Format("收到消息：{0}", context.Request.RawUrl));
 
             // 输入数据流
             byte[] inputBytes = new byte[context.Request.ContentLength64];
@@ -290,7 +291,7 @@ namespace Swift.Core
             fileName = HttpUtility.UrlDecode(fileName);
 
             string filePath = Path.Combine(Environment.CurrentDirectory, fileName.Replace('/', Path.DirectorySeparatorChar));
-            WriteLog(string.Format("下载文件本地地址:{0}", filePath));
+            LogWriter.Write(string.Format("下载文件本地地址:{0}", filePath));
 
             return File.ReadAllBytes(filePath);
         }
@@ -306,19 +307,10 @@ namespace Swift.Core
         {
             if (communicator == null)
             {
-                WriteLog("通信器未开");
+                LogWriter.Write("通信器未开");
             }
 
             communicator.SendRequest(member, msgType, Encoding.UTF8.GetBytes(msg));
-        }
-
-        /// <summary>
-        /// 写日志
-        /// </summary>
-        /// <param name="message"></param>
-        protected void WriteLog(string message)
-        {
-            Console.WriteLine("{0} {1}", DateTime.Now.ToString(), message);
         }
     }
 }

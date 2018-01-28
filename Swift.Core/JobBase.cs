@@ -2,6 +2,7 @@
 using Newtonsoft.Json;
 using Swift.Core.Consul;
 using Swift.Core.ExtensionException;
+using Swift.Core.Log;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -241,9 +242,7 @@ namespace Swift.Core
         /// </summary>
         public void CreateProductionPlan()
         {
-            // TODO:检查工人数量
-
-            WriteLog(string.Format("开始创建作业计划：{0},{1}", Name, Id));
+            LogWriter.Write(string.Format("开始创建作业计划：{0},{1}", Name, Id));
 
             // 更新作业状态为PlanMaking
             UpdateJobStatus(EnumJobRecordStatus.PlanMaking);
@@ -260,7 +259,7 @@ namespace Swift.Core
             if (!isJobSplitOK)
             {
                 UpdateJobStatus(EnumJobRecordStatus.PlanFailed);
-                WriteLog(string.Format("作业计划制定失败。"));
+                LogWriter.Write(string.Format("作业计划制定失败。"));
             }
             else
             {
@@ -282,7 +281,7 @@ namespace Swift.Core
                 WriteJobSpaceConfig();
 
                 UpdateJobStatus(EnumJobRecordStatus.PlanMaked);
-                WriteLog(string.Format("作业计划制定完毕。"));
+                LogWriter.Write(string.Format("作业计划制定完毕。"));
             }
         }
 
@@ -346,11 +345,11 @@ namespace Swift.Core
                 {
                     try
                     {
-                        WriteLog("作业分割进程退出:" + p.ExitCode);
+                        LogWriter.Write("作业分割进程退出:" + p.ExitCode);
                     }
                     catch (Exception ex)
                     {
-                        WriteLog("作业分割进程退出处理失败:" + ex.Message);
+                        LogWriter.Write("作业分割进程退出处理失败:" + ex.Message);
                     }
                 };
 
@@ -361,7 +360,7 @@ namespace Swift.Core
             }
             catch (Exception ex)
             {
-                WriteLog(string.Format("CallJobSplitMethod异常:{0},{1}", ex.Message, ex.StackTrace));
+                LogWriter.Write(string.Format("CallJobSplitMethod异常:{0},{1}", ex.Message, ex.StackTrace));
             }
         }
 
@@ -450,7 +449,7 @@ namespace Swift.Core
             string errorMessage;
             while (!CheckJobSplitStatus(out errorCode, out errorMessage))
             {
-                WriteLog(errorMessage);
+                LogWriter.Write(errorMessage);
 
                 if (errorCode == 5)
                 {
@@ -547,12 +546,12 @@ namespace Swift.Core
             if (isExecuteOK)
             {
                 task.UpdateTaskStatus(EnumTaskStatus.Completed);
-                WriteLog(string.Format("任务执行成功:{0},{1},{2}", Name, Id, task.Id));
+                LogWriter.Write(string.Format("任务执行成功:{0},{1},{2}", Name, Id, task.Id));
             }
             else
             {
                 task.UpdateTaskStatus(EnumTaskStatus.Failed);
-                WriteLog(string.Format("任务执行失败:{0},{1},{2}", Name, Id, task.Id));
+                LogWriter.Write(string.Format("任务执行失败:{0},{1},{2}", Name, Id, task.Id));
             }
         }
 
@@ -659,7 +658,7 @@ namespace Swift.Core
             }
             catch (Exception ex)
             {
-                WriteLog(string.Format("CallTaskExecuteMethod异常:{0},{1}", ex.Message, ex.StackTrace));
+                LogWriter.Write(string.Format("CallTaskExecuteMethod异常:{0},{1}", ex.Message, ex.StackTrace));
             }
         }
 
@@ -710,7 +709,7 @@ namespace Swift.Core
             string errorMessage;
             while (!CheckTaskExecuteStatus(task, out errorCode, out errorMessage))
             {
-                WriteLog(errorMessage);
+                LogWriter.Write(errorMessage);
 
                 if (errorCode == 4)
                 {
@@ -803,7 +802,7 @@ namespace Swift.Core
                         catch (System.Exception ex)
                         {
                             task.UpdateTaskStatus(EnumTaskStatus.SyncFailed);
-                            WriteLog(string.Format("同步任务结果异常:{0}", ex.Message));
+                            LogWriter.Write(string.Format("同步任务结果异常:{0}", ex.Message));
                         }
                     }
                 }
@@ -836,7 +835,7 @@ namespace Swift.Core
         {
             if (TaskPlan == null)
             {
-                WriteLog(string.Format("任务计划为空:{0},{1}", Name, Id));
+                LogWriter.Write(string.Format("任务计划为空:{0},{1}", Name, Id));
                 return;
             }
             var taskCount = TaskPlan.SelectMany(d => d.Value).Count();
@@ -870,12 +869,12 @@ namespace Swift.Core
             if (isMergeOK)
             {
                 UpdateJobStatus(EnumJobRecordStatus.TaskMerged);
-                WriteLog(string.Format("任务合并成功:{0},{1}", Name, Id));
+                LogWriter.Write(string.Format("任务合并成功:{0},{1}", Name, Id));
             }
             else
             {
                 UpdateJobStatus(EnumJobRecordStatus.TaskMergeFailed);
-                WriteLog(string.Format("任务合并失败:{0},{1}", Name, Id));
+                LogWriter.Write(string.Format("任务合并失败:{0},{1}", Name, Id));
             }
         }
 
@@ -891,14 +890,14 @@ namespace Swift.Core
                 {
                     task.LoadResult();
                 }
-                WriteLog("已经准备好要合并的任务");
+                LogWriter.Write("已经准备好要合并的任务");
 
                 string result = Collect(tasks);
-                WriteLog("已经汇集完毕任务结果");
+                LogWriter.Write("已经汇集完毕任务结果");
 
                 string jobResultPath = Path.Combine(CurrentJobSpacePath, "result.txt");
                 File.WriteAllText(jobResultPath, result);
-                WriteLog("已经汇集完毕任务结果");
+                LogWriter.Write("已经汇集完毕任务结果");
 
                 Console.WriteLine("CollectTaskResults:OK");
             }
@@ -919,7 +918,7 @@ namespace Swift.Core
             string unMergeReasonDesc;
             while (!CheckTaskMergeResultStatus(out unMergeReason, out unMergeReasonDesc))
             {
-                WriteLog(unMergeReasonDesc);
+                LogWriter.Write(unMergeReasonDesc);
 
                 if (unMergeReason == 4)
                 {
@@ -1031,7 +1030,7 @@ namespace Swift.Core
                         }
                         else
                         {
-                            WriteLog(e.Data);
+                            LogWriter.Write(e.Data);
                         }
                     }
                 };
@@ -1055,7 +1054,7 @@ namespace Swift.Core
             }
             catch (Exception ex)
             {
-                WriteLog(string.Format("CallTaskCollectMethod异常:{0},{1}", ex.Message, ex.StackTrace));
+                LogWriter.Write(string.Format("CallTaskCollectMethod异常:{0},{1}", ex.Message, ex.StackTrace));
             }
         }
 
@@ -1170,15 +1169,6 @@ namespace Swift.Core
             var jobConfigJson = JsonConvert.SerializeObject(this);
             string currentJobConfigFilePath = Path.Combine(CurrentJobSpacePath, "job.json");
             File.WriteAllText(currentJobConfigFilePath, jobConfigJson);
-        }
-
-        /// <summary>
-        /// 写日志
-        /// </summary>
-        /// <param name="message"></param>
-        protected void WriteLog(string message)
-        {
-            Console.WriteLine("{0} {1}", DateTime.Now.ToString(), message);
         }
     }
 }

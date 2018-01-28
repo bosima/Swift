@@ -47,12 +47,12 @@ namespace Swift
             if (memberRole == "manager")
             {
                 ShowMessage("准备注册为Manager...");
-                currentMember = cluster.RegisterMember(currentMemberId, EnumMemberRole.Manager);
+                currentMember = cluster.RegisterManager(currentMemberId);
             }
             else if (memberRole == "worker")
             {
                 ShowMessage("准备注册为Worker...");
-                currentMember = cluster.RegisterMember(currentMemberId, EnumMemberRole.Worker);
+                currentMember = cluster.RegisterWorker(currentMemberId);
             }
 
             if (currentMember == null)

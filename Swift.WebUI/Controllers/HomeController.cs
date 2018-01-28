@@ -116,13 +116,16 @@ namespace Swift.WebUI.Controllers
         {
             List<Cluster> clusterList = new List<Cluster>();
             var keys = ConsulKV.Keys(string.Format("Swift/"));
-            foreach (var key in keys)
+            if (keys != null && keys.Length > 0)
             {
-                var subKey = key.TrimStart("Swift/".ToCharArray());
-                var clusterName = subKey.Substring(0, subKey.IndexOf('/'));
-                if (!clusterList.Where(d => d.Name == clusterName).Any())
+                foreach (var key in keys)
                 {
-                    clusterList.Add(new Cluster(clusterName, string.Empty));
+                    var subKey = key.TrimStart("Swift/".ToCharArray());
+                    var clusterName = subKey.Substring(0, subKey.IndexOf('/'));
+                    if (!clusterList.Where(d => d.Name == clusterName).Any())
+                    {
+                        clusterList.Add(new Cluster(clusterName, string.Empty));
+                    }
                 }
             }
 

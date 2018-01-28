@@ -2,6 +2,7 @@
 using Newtonsoft.Json;
 using Swift.Core.Consul;
 using Swift.Core.ExtensionException;
+using Swift.Core.Log;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -257,7 +258,7 @@ namespace Swift.Core
         public void MonitorMember()
         {
             RefreshMembers(null);
-            memberRefreshTimer = new Timer(new TimerCallback(RefreshMembers), null, 3000, 5000);
+            memberRefreshTimer = new Timer(new TimerCallback(RefreshMembers), null, 3000, ClusterConfiguration.RefreshMemberInterval);
         }
 
         /// <summary>
@@ -280,7 +281,7 @@ namespace Swift.Core
 
             isRefreshingMembers = true;
 
-            WriteLog("开始刷新内存集群成员...");
+            LogWriter.Write("开始刷新内存集群成员...");
 
             try
             {
@@ -288,7 +289,7 @@ namespace Swift.Core
             }
             catch (Exception ex)
             {
-                WriteLog(string.Format("刷新内存集群成员异常:{0},{1}", ex.Message, ex.StackTrace));
+                LogWriter.Write(string.Format("刷新内存集群成员异常:{0},{1}", ex.Message, ex.StackTrace));
                 return;
             }
 
@@ -298,7 +299,7 @@ namespace Swift.Core
 
             isRefreshingMembers = false;
 
-            WriteLog("结束刷新内存集群成员。");
+            LogWriter.Write("结束刷新内存集群成员。");
         }
 
         /// <summary>
@@ -356,7 +357,7 @@ namespace Swift.Core
                     members.Add(newMember);
                     OnMemberJoinEventHandler?.Invoke(newMember);
 
-                    WriteLog(string.Format("已添加成员:{0},{1}", newMember.Id, newMember.Role.ToString()));
+                    LogWriter.Write(string.Format("已添加成员:{0},{1}", newMember.Id, newMember.Role.ToString()));
                 }
             }
 
@@ -371,10 +372,47 @@ namespace Swift.Core
                         members.Remove(oldMember);
                         OnMemberRemoveEventHandler?.Invoke(oldMember);
 
-                        WriteLog(string.Format("已移除成员:{0},{1}", oldMember.Id, oldMember.Role.ToString()));
+                        LogWriter.Write(string.Format("已移除成员:{0},{1}", oldMember.Id, oldMember.Role.ToString()));
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// 注册为Manager
+        /// </summary>
+        /// <returns></returns>
+        public Member RegisterManager(string memberId)
+        {
+            Manager member = new Manager()
+            {
+                Id = memberId,
+                Role = EnumMemberRole.Manager,
+                FirstRegisterTime = DateTime.Now,
+                OnlineTime = DateTime.Now,
+                Status = 1,
+            };
+
+            return RegisterMember(member);
+        }
+
+        /// <summary>
+        /// 注册为Worker
+        /// </summary>
+        /// <param name="memberId"></param>
+        /// <returns></returns>
+        public Member RegisterWorker(string memberId)
+        {
+            Worker member = new Worker()
+            {
+                Id = memberId,
+                Role = EnumMemberRole.Worker,
+                FirstRegisterTime = DateTime.Now,
+                OnlineTime = DateTime.Now,
+                Status = 1,
+            };
+
+            return RegisterMember(member);
         }
 
         /// <summary>
@@ -382,17 +420,8 @@ namespace Swift.Core
         /// </summary>
         /// <param name="memberId"></param>
         /// <param name="role"></param>
-        public Member RegisterMember(string memberId, EnumMemberRole role)
+        private Member RegisterMember(Member member)
         {
-            MemberWrapper member = new MemberWrapper()
-            {
-                Id = memberId,
-                Role = role,
-                FirstRegisterTime = DateTime.Now,
-                OnlineTime = DateTime.Now,
-                Status = 1,
-            };
-
             int tryTimes = 3;
             while (tryTimes > 0)
             {
@@ -410,12 +439,12 @@ namespace Swift.Core
                 catch (Exception ex)
                 {
                     tryTimes--;
-                    WriteLog(string.Format("注册成员出现异常，还会重试{0}次：{1}", tryTimes, ex.Message));
+                    LogWriter.Write(string.Format("注册成员出现异常，还会重试{0}次：{1}", tryTimes, ex.Message));
                     Thread.Sleep(2000);
                 }
             }
 
-            return members.Where(d => d.Id == memberId).FirstOrDefault();
+            return members.Where(d => d.Id == member.Id).FirstOrDefault();
         }
 
         /// <summary>
@@ -582,7 +611,7 @@ namespace Swift.Core
                     }
                     catch (Exception ex)
                     {
-                        WriteLog(string.Format("Consul健康检测PassTTL异常:{0}", ex.Message + ex.StackTrace));
+                        LogWriter.Write(string.Format("Consul健康检测PassTTL异常:{0}", ex.Message + ex.StackTrace));
                         Thread.Sleep(1000);
                     }
 
@@ -599,11 +628,24 @@ namespace Swift.Core
         private Timer taskRefreshTimer;
 
         /// <summary>
+        /// 指示是否正在刷新任务
+        /// </summary>
+        private bool isRefreshingTasks = false;
+
+        /// <summary>
         /// 监控任务变化
         /// </summary>
         public void MonitorTask()
         {
-            taskRefreshTimer = new Timer(new TimerCallback(RefreshTasks), null, 40000, 10000);
+            taskRefreshTimer = new Timer(new TimerCallback(RefreshTasks), null, 20000, 10000);
+        }
+
+        /// <summary>
+        /// 停止监控任务变化
+        /// </summary>
+        public void StopMonitorTask()
+        {
+            taskRefreshTimer.Dispose();
         }
 
         /// <summary>
@@ -611,6 +653,14 @@ namespace Swift.Core
         /// </summary>
         public void RefreshTasks(object state)
         {
+            // 如果任务刷新需要的时间超过任务刷新间隔时间，则跳过新的刷新
+            if (isRefreshingTasks)
+            {
+                return;
+            }
+
+            isRefreshingTasks = true;
+
             lock (refreshLocker)
             {
                 try
@@ -652,7 +702,7 @@ namespace Swift.Core
                             activedTasks.Add(newTask);
                             OnTaskJoinEventHandler?.Invoke(newTask);
 
-                            WriteLog(string.Format("已添加新任务:{0},{1},{2}", newTask.Job.Name, newTask.Job.Id, newTask.Id));
+                            LogWriter.Write(string.Format("已添加新任务:{0},{1},{2}", newTask.Job.Name, newTask.Job.Id, newTask.Id));
                         }
                     }
 
@@ -667,17 +717,18 @@ namespace Swift.Core
                                 activedTasks.Remove(oldTask);
                                 OnTaskRemoveEventHandler?.Invoke(oldTask);
 
-                                WriteLog(string.Format("已移除任务:{0},{1},{2}", oldTask.Job.Name, oldTask.Job.Id, oldTask.Id));
+                                LogWriter.Write(string.Format("已移除任务:{0},{1},{2}", oldTask.Job.Name, oldTask.Job.Id, oldTask.Id));
                             }
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    WriteLog(string.Format("刷新任务异常:{0}", ex.StackTrace));
+                    LogWriter.Write(string.Format("刷新任务异常:{0}", ex.StackTrace));
                 }
-
             }
+
+            isRefreshingTasks = false;
         }
 
         /// <summary>
@@ -717,7 +768,7 @@ namespace Swift.Core
             var jobRecordKV = ConsulKV.Get(jobRecordKey);
             if (jobRecordKV == null)
             {
-                WriteLog(string.Format("作业丢失:{0},{1}", job.Name, job.Id));
+                LogWriter.Write(string.Format("作业丢失:{0},{1}", job.Name, job.Id));
                 return null;
             }
 
@@ -727,7 +778,7 @@ namespace Swift.Core
             {
                 if (jobRecord.Status == EnumJobRecordStatus.Pending || jobRecord.Status == EnumJobRecordStatus.PlanMaking)
                 {
-                    //WriteLog(string.Format("作业任务尚未发放:{0},{1}", job.Name, job.Id));
+                    //Logger.Write(string.Format("作业任务尚未发放:{0},{1}", job.Name, job.Id));
                     return null;
                 }
 
@@ -759,11 +810,16 @@ namespace Swift.Core
         private Timer jobRefreshTimer;
 
         /// <summary>
+        /// 指示是否正在刷新作业
+        /// </summary>
+        private bool isRefreshingJobs = false;
+
+        /// <summary>
         /// 监控作业变化
         /// </summary>
         public void MonitorJobs()
         {
-            jobRefreshTimer = new Timer(new TimerCallback(RefreshJob), null, 30000, 10000);
+            jobRefreshTimer = new Timer(new TimerCallback(RefreshJob), null, 20000, ClusterConfiguration.RefreshJobInterval);
         }
 
         /// <summary>
@@ -780,9 +836,16 @@ namespace Swift.Core
         /// <param name="state"></param>
         public void RefreshJob(object state)
         {
+            if (isRefreshingJobs)
+            {
+                return;
+            }
+
+            isRefreshingJobs = true;
+
             lock (refreshLocker)
             {
-                WriteLog("开始刷新作业列表...");
+                LogWriter.Write("开始刷新作业列表...");
 
                 try
                 {
@@ -799,11 +862,11 @@ namespace Swift.Core
                                 {
                                     activedJobs.Remove(oldJobRecord);
                                     OnJobRemoveEventHandler?.Invoke(oldJobRecord);
-                                    WriteLog(string.Format("已从内存移除作业记录:{0},{1}", jobConfig.Name, oldJobRecord.Id));
+                                    LogWriter.Write(string.Format("已从内存移除作业记录:{0},{1}", jobConfig.Name, oldJobRecord.Id));
                                 }
                             }
 
-                            WriteLog(string.Format("作业LastRecordId:{0},{1}", jobConfig.Name, jobConfig.LastRecordId));
+                            LogWriter.Write(string.Format("作业LastRecordId:{0},{1}", jobConfig.Name, jobConfig.LastRecordId));
 
                             if (!string.IsNullOrWhiteSpace(jobConfig.LastRecordId))
                             {
@@ -811,7 +874,7 @@ namespace Swift.Core
                                 var jobRecordKV = ConsulKV.Get(jobRecordKey);
                                 if (jobRecordKV == null)
                                 {
-                                    WriteLog(string.Format("作业记录不存在或者已经被删除:{0},{1}", jobConfig.Name, jobConfig.LastRecordId));
+                                    LogWriter.Write(string.Format("作业记录不存在或者已经被删除:{0},{1}", jobConfig.Name, jobConfig.LastRecordId));
 
                                     // 如果还在内存中，则从内存移除此记录
                                     var memoryJob = activedJobs.Where(d => d.Id == jobConfig.LastRecordId).FirstOrDefault();
@@ -819,7 +882,7 @@ namespace Swift.Core
                                     {
                                         activedJobs.Remove(memoryJob);
                                         OnJobRemoveEventHandler?.Invoke(memoryJob);
-                                        WriteLog(string.Format("已从内存移除作业记录:{0},{1}", jobConfig.Name, memoryJob.Id));
+                                        LogWriter.Write(string.Format("已从内存移除作业记录:{0},{1}", jobConfig.Name, memoryJob.Id));
                                     }
 
                                     continue;
@@ -832,7 +895,7 @@ namespace Swift.Core
                                     jobRecord.ModifyIndex = jobRecordKV.ModifyIndex;
                                     activedJobs.Add(jobRecord);
                                     OnJobJoinEventHandler?.Invoke(jobRecord);
-                                    WriteLog(string.Format("发现新作业记录:{0},{1}", jobConfig.Name, jobRecord.Id));
+                                    LogWriter.Write(string.Format("发现新作业记录:{0},{1}", jobConfig.Name, jobRecord.Id));
                                 }
                                 else
                                 {
@@ -844,20 +907,22 @@ namespace Swift.Core
                                         jobRecord.ModifyIndex = jobRecordKV.ModifyIndex;
                                         exsitJob.UpdateFrom(jobRecord);
 
-                                        WriteLog(string.Format("作业记录有更新:{0}", jobConfig.LastRecordId));
+                                        LogWriter.Write(string.Format("作业记录有更新:{0}", jobConfig.LastRecordId));
                                     }
                                 }
                             }
                         }
                     }
 
-                    WriteLog("结束刷新作业列表。");
+                    LogWriter.Write("结束刷新作业列表。");
                 }
                 catch (Exception ex)
                 {
-                    WriteLog(string.Format("刷新作业记录异常:{0}", ex.Message));
+                    LogWriter.Write(string.Format("刷新作业记录异常:{0}", ex.Message));
                 }
             }
+
+            isRefreshingJobs = false;
         }
         #endregion
 
@@ -878,11 +943,16 @@ namespace Swift.Core
         private Timer jobCreateTimer;
 
         /// <summary>
+        /// 指示是否正在刷新作业配置
+        /// </summary>
+        private bool isRefreshingJobConfigs = false;
+
+        /// <summary>
         /// 监控作业配置变化 Worker将调用此方法，以更新集群作业配置
         /// </summary>
         public void MonitorJobConfigsFromConsul()
         {
-            jobConfigConsulRefreshTimer = new Timer(new TimerCallback(RefreshJobConfigsFromConsul), null, 5000, 30000);
+            jobConfigConsulRefreshTimer = new Timer(new TimerCallback(RefreshJobConfigsFromConsul), null, 5000, ClusterConfiguration.RefreshJobConfigInterval);
         }
 
         /// <summary>
@@ -891,8 +961,8 @@ namespace Swift.Core
         /// </summary>
         public void MonitorJobConfigsFromDisk()
         {
-            jobConfigRefreshTimer = new Timer(new TimerCallback(RefreshJobConfigsFromDisk), null, 5000, 30000);
-            jobCreateTimer = new Timer(new TimerCallback(TimingCreateJob), null, 10000, 30000);
+            jobConfigRefreshTimer = new Timer(new TimerCallback(RefreshJobConfigsFromDisk), null, 5000, ClusterConfiguration.RefreshJobConfigInterval);
+            jobCreateTimer = new Timer(new TimerCallback(TimingCreateJob), null, 10000, ClusterConfiguration.JobSpaceCreateInterval);
         }
 
         /// <summary>
@@ -900,8 +970,26 @@ namespace Swift.Core
         /// </summary>
         public void StopMonitorJobConfigsFromDisk()
         {
-            jobConfigRefreshTimer.Dispose();
-            jobCreateTimer.Dispose();
+            if (jobConfigRefreshTimer != null)
+            {
+                jobConfigRefreshTimer.Dispose();
+            }
+
+            if (jobCreateTimer != null)
+            {
+                jobCreateTimer.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// 停止监控作业配置变化 Worker将调用此方法，以停止更新集群作业配置
+        /// </summary>
+        public void StopMonitorJobConfigsFromConsul()
+        {
+            if (jobConfigConsulRefreshTimer != null)
+            {
+                jobConfigConsulRefreshTimer.Dispose();
+            }
         }
 
         /// <summary>
@@ -914,7 +1002,7 @@ namespace Swift.Core
             {
                 if (jobConfigs != null && jobConfigs.Count > 0)
                 {
-                    WriteLog(string.Format("开始定时创建作业检查..."));
+                    LogWriter.Write(string.Format("开始定时创建作业检查..."));
 
                     var nowHourAndMinute = DateTime.Now.ToString("HH:mm");
                     foreach (var jobConfig in jobConfigs)
@@ -928,7 +1016,7 @@ namespace Swift.Core
                                 var lastJob = JsonConvert.DeserializeObject<JobWrapper>(Encoding.UTF8.GetString(lastJobKV.Value));
                                 if (lastJob.Status != EnumJobRecordStatus.TaskMerged)
                                 {
-                                    WriteLog(string.Format("上一次作业记录未完成:{0},{1}", jobConfig.Name, jobConfig.LastRecordId));
+                                    LogWriter.Write(string.Format("上一次作业记录未完成:{0},{1}", jobConfig.Name, jobConfig.LastRecordId));
                                     continue;
                                 }
                             }
@@ -951,9 +1039,7 @@ namespace Swift.Core
                                         jobKV = ConsulKV.Create(jobKey);
                                         jobKV.Value = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(job));
                                         ConsulKV.CAS(jobKV);
-                                        WriteLog(string.Format("已创建作业:{0},{1}", jobConfig.Name, job.Id));
-
-
+                                        LogWriter.Write(string.Format("已创建作业:{0},{1}", jobConfig.Name, job.Id));
 
                                         // 更新Consul作业配置
                                         var jobConfigKey = string.Format("Swift/{0}/Jobs/{1}/Config", Name, jobConfig.Name);
@@ -969,14 +1055,14 @@ namespace Swift.Core
                                         var jobConfigLocalPath = Path.Combine(Environment.CurrentDirectory, "Jobs", jobConfig.Name, "config", "job.json");
                                         File.WriteAllText(jobConfigLocalPath, jobConfigJson);
 
-                                        WriteLog(string.Format("已更新作业配置:{0}", jobConfig.Name));
+                                        LogWriter.Write(string.Format("已更新作业配置:{0}", jobConfig.Name));
                                     }
                                 }
                             }
                         }
                     }
 
-                    WriteLog(string.Format("结束定时创建作业检查。"));
+                    LogWriter.Write(string.Format("结束定时创建作业检查。"));
                 }
             }
         }
@@ -986,12 +1072,19 @@ namespace Swift.Core
         /// </summary>
         private void RefreshJobConfigsFromDisk(object state)
         {
+            if (isRefreshingJobConfigs)
+            {
+                return;
+            }
+
+            isRefreshingJobConfigs = true;
+
             lock (refreshLocker)
             {
                 try
                 {
                     var latestJobConfigs = LoadJobConfigsFromDisk();
-                    WriteLog(string.Format("发现作业配置数量:{0}", latestJobConfigs.Count));
+                    LogWriter.Write(string.Format("发现作业配置数量:{0}", latestJobConfigs.Count));
 
                     if (jobConfigs == null)
                     {
@@ -1036,10 +1129,10 @@ namespace Swift.Core
                     {
                         foreach (var jobConfig in newJobConfigList)
                         {
-                            WriteLog("开始保存作业配置：" + jobConfig.Name);
+                            LogWriter.Write("开始保存作业配置：" + jobConfig.Name);
                             jobConfigs.Add(jobConfig);
                             var result = TryAddJobConfig(jobConfig);
-                            WriteLog("保存作业配置结果：" + result.ToString());
+                            LogWriter.Write("保存作业配置结果：" + result.ToString());
 
                             if (result)
                             {
@@ -1056,16 +1149,16 @@ namespace Swift.Core
                             if (removeJobConfigList.Where(d => d.Name == jobConfigs[i].Name).Any())
                             {
                                 var removeJobConfig = jobConfigs[i];
-                                WriteLog("开始移除作业配置：" + removeJobConfig.Name.ToString());
+                                LogWriter.Write("开始移除作业配置：" + removeJobConfig.Name.ToString());
 
                                 // 从内存中移除
                                 var mRemoveResult = jobConfigs.Remove(removeJobConfig);
-                                WriteLog("内存中移除作业配置结果：" + mRemoveResult.ToString());
+                                LogWriter.Write("内存中移除作业配置结果：" + mRemoveResult.ToString());
 
                                 // TODO:可以仅作删除标记
                                 // 从配置中移除
                                 var configRemoveResult = RemoveJobConfig(removeJobConfig);
-                                WriteLog("配置中移除作业配置结果：" + configRemoveResult.ToString());
+                                LogWriter.Write("配置中移除作业配置结果：" + configRemoveResult.ToString());
 
                                 OnJobConfigRemoveEventHandler?.Invoke(removeJobConfig);
                             }
@@ -1074,9 +1167,11 @@ namespace Swift.Core
                 }
                 catch (Exception ex)
                 {
-                    WriteLog(string.Format("刷新作业配置异常:{0}", ex.Message));
+                    LogWriter.Write(string.Format("刷新作业配置异常:{0}", ex.Message));
                 }
             }
+
+            isRefreshingJobConfigs = false;
         }
 
         /// <summary>
@@ -1085,12 +1180,19 @@ namespace Swift.Core
         /// <param name="state"></param>
         private void RefreshJobConfigsFromConsul(object state)
         {
+            if (isRefreshingJobConfigs)
+            {
+                return;
+            }
+
+            isRefreshingJobConfigs = true;
+
             lock (refreshLocker)
             {
                 try
                 {
                     var latestJobConfigs = LoadJobConfigsFromConsul();
-                    WriteLog(string.Format("发现作业配置数量:{0}", latestJobConfigs.Count));
+                    LogWriter.Write(string.Format("发现作业配置数量:{0}", latestJobConfigs.Count));
 
                     if (jobConfigs == null)
                     {
@@ -1151,7 +1253,7 @@ namespace Swift.Core
 
                                 // 从内存中移除
                                 var mRemoveResult = jobConfigs.Remove(removeJobConfig);
-                                WriteLog("内存中移除作业配置结果：" + mRemoveResult.ToString());
+                                LogWriter.Write("内存中移除作业配置结果：" + mRemoveResult.ToString());
 
                                 OnJobConfigRemoveEventHandler?.Invoke(removeJobConfig);
                             }
@@ -1160,9 +1262,11 @@ namespace Swift.Core
                 }
                 catch (Exception ex)
                 {
-                    WriteLog(string.Format("刷新作业配置异常:{0},{1}", ex.Message, ex.StackTrace));
+                    LogWriter.Write(string.Format("刷新作业配置异常:{0},{1}", ex.Message, ex.StackTrace));
                 }
             }
+
+            isRefreshingJobConfigs = false;
         }
 
         /// <summary>
@@ -1205,7 +1309,7 @@ namespace Swift.Core
             var jobRootPath = Path.Combine(Environment.CurrentDirectory, "Jobs");
             if (!Directory.Exists(jobRootPath))
             {
-                WriteLog(string.Format("作业包目录为空，没有作业包真高兴！"));
+                LogWriter.Write(string.Format("作业包目录为空，没有作业包真高兴！"));
                 return null;
             }
 
@@ -1275,15 +1379,6 @@ namespace Swift.Core
         #endregion
 
         #region 其它
-        /// <summary>
-        /// 写日志
-        /// </summary>
-        /// <param name="message"></param>
-        private void WriteLog(string message)
-        {
-            Console.WriteLine(string.Format("{0} {1}", DateTime.Now.ToString(), message));
-        }
-
         /// <summary>
         /// 获取本机IP
         /// </summary>

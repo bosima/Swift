@@ -31,16 +31,20 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Consul, Version=0.7.2.3, Culture=neutral, PublicKeyToken=20a6ad9a81df1d95, processorArchitecture=MSIL">
-      <HintPath>..\packages\Consul.0.7.2.3\lib\net45\Consul.dll</HintPath>
+    <Reference Include="Consul, Version=0.7.2.4, Culture=neutral, PublicKeyToken=20a6ad9a81df1d95, processorArchitecture=MSIL">
+      <HintPath>..\packages\Consul.0.7.2.4\lib\net45\Consul.dll</HintPath>
     </Reference>
     <Reference Include="Newtonsoft.Json, Version=10.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <HintPath>..\packages\Newtonsoft.Json.10.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="NLog, Version=4.0.0.0, Culture=neutral, PublicKeyToken=5120e14c03d0593c, processorArchitecture=MSIL">
+      <HintPath>..\packages\NLog.4.4.12\lib\net45\NLog.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Net.Http.WebRequest" />
     <Reference Include="System.Web" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
@@ -54,7 +58,7 @@
     <Compile Include="CommunicationResponse.cs" />
     <Compile Include="Consul\ConsulKV.cs" />
     <Compile Include="Consul\ConsulService.cs" />
-    <Compile Include="DefaultConfiguration.cs" />
+    <Compile Include="ClusterConfiguration.cs" />
     <Compile Include="EnumJobStatus.cs" />
     <Compile Include="EnumMemberRole.cs" />
     <Compile Include="EnumTaskStatus.cs" />
@@ -65,6 +69,8 @@
     <Compile Include="JobConfig.cs" />
     <Compile Include="JobTask.cs" />
     <Compile Include="JobWrapper.cs" />
+    <Compile Include="Log\LogLevel.cs" />
+    <Compile Include="Log\LogWriter.cs" />
     <Compile Include="Manager.cs" />
     <Compile Include="Member.cs" />
     <Compile Include="MemberCommunicator.cs" />
@@ -73,6 +79,9 @@
     <Compile Include="Worker.cs" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="NLog.config">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>

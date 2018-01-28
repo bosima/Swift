@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using Swift.Core.Log;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -47,14 +48,14 @@ namespace Swift.Core
                 var jobs = Cluster.Jobs;
                 if (jobs.Count <= 0)
                 {
-                    WriteLog("没有作业真高兴...");
+                    LogWriter.Write("没有作业真高兴...");
                     Thread.Sleep(5000);
                     continue;
                 }
 
                 if (Cluster.Workers == null || !Cluster.Workers.Where(d => d.Status == 1).Any())
                 {
-                    WriteLog("我是个光杆司令，不想干活...");
+                    LogWriter.Write("我是个光杆司令，不想干活...");
                     Thread.Sleep(10000);
                     continue;
                 }
@@ -108,7 +109,7 @@ namespace Swift.Core
         /// </summary>
         protected override void Start()
         {
-            WriteLog("Manager开始干活了...");
+            LogWriter.Write("Manager开始干活了...");
 
             Cluster.MonitorJobConfigsFromDisk();
             Cluster.MonitorJobs();

@@ -1,6 +1,7 @@
 ﻿using Consul;
 using Newtonsoft.Json;
 using Swift.Core.Consul;
+using Swift.Core.Log;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -30,7 +31,7 @@ namespace Swift.Core
         /// </summary>
         protected override void Start()
         {
-            WriteLog("工人开始干活了...");
+            LogWriter.Write("工人开始干活了...");
             Cluster.OnJobConfigJoinEventHandler += Cluster_OnJobConfigJoinEventHandler;
             Cluster.OnJobConfigRemoveEventHandler += Cluster_OnJobConfigRemoveEventHandler;
             Cluster.MonitorJobConfigsFromConsul();
@@ -58,7 +59,7 @@ namespace Swift.Core
             // 下载作业配置
             if (Cluster.Manager == null)
             {
-                WriteLog(string.Format("集群[{0}]不存在Manager，无法下载作业包", Cluster.Name));
+                LogWriter.Write(string.Format("集群[{0}]不存在Manager，无法下载作业包", Cluster.Name));
                 return;
             }
 
@@ -108,7 +109,7 @@ namespace Swift.Core
                 var taskPlanCompletedJobs = jobs.Where(d => d.Status == EnumJobRecordStatus.PlanMaked || d.Status == EnumJobRecordStatus.TaskExecuting);
                 if (!taskPlanCompletedJobs.Any())
                 {
-                    WriteLog(string.Format("没有可执行的作业真高兴！"));
+                    LogWriter.Write(string.Format("没有可执行的作业真高兴！"));
                     Thread.Sleep(5000);
                     continue;
                 }
@@ -119,7 +120,7 @@ namespace Swift.Core
                     // 判断作业记录目录是否存在
                     if (!Directory.Exists(job.CurrentJobSpacePath))
                     {
-                        WriteLog(string.Format("作业记录所需文件还未准备好:{0}", job.Name));
+                        LogWriter.Write(string.Format("作业记录所需文件还未准备好:{0}", job.Name));
                         continue;
                     }
 
@@ -131,7 +132,7 @@ namespace Swift.Core
                         {
                             if (task.Status == 0) // 未处理的任务
                             {
-                                WriteLog(string.Format("发现未处理任务:{0},{1},{2}", job.Name, job.Id, task.Id));
+                                LogWriter.Write(string.Format("发现未处理任务:{0},{1},{2}", job.Name, job.Id, task.Id));
 
                                 taskList.Add(Task.Factory.StartNew(() =>
                                     {
@@ -157,7 +158,7 @@ namespace Swift.Core
                 var jobs = Cluster.Jobs;
                 if (jobs == null || jobs.Count <= 0)
                 {
-                    WriteLog(string.Format("没有作业真高兴！"));
+                    LogWriter.Write(string.Format("没有作业真高兴！"));
                     Thread.Sleep(5000);
                     continue;
                 }
@@ -166,7 +167,7 @@ namespace Swift.Core
                                                         || d.Status == EnumJobRecordStatus.TaskExecuting);
                 if (!taskPlanCompletedJobs.Any())
                 {
-                    WriteLog(string.Format("没有可执行的作业真高兴！"));
+                    LogWriter.Write(string.Format("没有可执行的作业真高兴！"));
                     Thread.Sleep(5000);
                     continue;
                 }
@@ -179,18 +180,18 @@ namespace Swift.Core
                     if (!File.Exists(jobPkg))
                     {
                         Download(Cluster.Manager, "job/package", job.Name + ".zip");
-                        WriteLog(string.Format("已拉取作业包:{0}", job.Name + ".zip"));
+                        LogWriter.Write(string.Format("已拉取作业包:{0}", job.Name + ".zip"));
                     }
                     //else
                     //{
-                    //    WriteLog(string.Format("作业包已存在:{0}", job.Name + ".zip"));
+                    //    Logger.Write(string.Format("作业包已存在:{0}", job.Name + ".zip"));
                     //}
 
                     // 判断作业记录目录是否存在
                     if (!Directory.Exists(job.CurrentJobSpacePath))
                     {
                         job.CreateJobSpace();
-                        WriteLog(string.Format("已创建作业记录所需文件:{0}", job.Name));
+                        LogWriter.Write(string.Format("已创建作业记录所需文件:{0}", job.Name));
                     }
                 }
 
