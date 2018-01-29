@@ -324,8 +324,11 @@ namespace Swift.Core
                             File.WriteAllText(physicalPath, "-1:" + e.Data);
                         }
 
-                        p.Close();
-                        p.Dispose();
+                        if (!p.HasExited)
+                        {
+                            p.Close();
+                            p.Dispose();
+                        }
                     }
                 };
 
@@ -336,8 +339,11 @@ namespace Swift.Core
                         string physicalPath = Path.Combine(CurrentJobSpacePath, "taskcreate.status");
                         File.WriteAllText(physicalPath, "-1:" + (e.Data == null ? string.Empty : e.Data));
 
-                        p.Close();
-                        p.Dispose();
+                        if (!p.HasExited)
+                        {
+                            p.Close();
+                            p.Dispose();
+                        }
                     }
                 };
 
@@ -422,11 +428,11 @@ namespace Swift.Core
                     task.WriteRequirement();
                 }
 
-                Console.Write("GenerateTasks:OK");
+                Console.WriteLine("GenerateTasks:OK");
             }
             catch (Exception ex)
             {
-                Console.Write("GenerateTasks:Error:" + ex.Message);
+                Console.WriteLine("GenerateTasks:Error:" + ex.Message);
             }
         }
 
@@ -616,7 +622,7 @@ namespace Swift.Core
                 p.StartInfo.RedirectStandardOutput = true;
                 p.StartInfo.RedirectStandardError = true;
                 p.StartInfo.CreateNoWindow = true;
-
+                p.EnableRaisingEvents = true;
 
                 p.OutputDataReceived += (s, e) =>
                 {
@@ -634,8 +640,11 @@ namespace Swift.Core
                             File.WriteAllText(physicalPath, "-1:" + e.Data);
                         }
 
-                        p.Close();
-                        p.Dispose();
+                        if (!p.HasExited)
+                        {
+                            p.Close();
+                            p.Dispose();
+                        }
                     }
                 };
 
@@ -646,8 +655,23 @@ namespace Swift.Core
                         string physicalPath = Path.Combine(currentTaskPath, "taskexecute.status");
                         File.WriteAllText(physicalPath, "-1:" + e.Data);
 
-                        p.Close();
-                        p.Dispose();
+                        if (!p.HasExited)
+                        {
+                            p.Close();
+                            p.Dispose();
+                        }
+                    }
+                };
+
+                p.Exited += (s, e) =>
+                {
+                    try
+                    {
+                        LogWriter.Write("任务执行进程退出:" + p.ExitCode);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWriter.Write("任务执行进程退出处理失败:" + ex.Message);
                     }
                 };
 
@@ -678,7 +702,7 @@ namespace Swift.Core
                 task.Result = result;
                 task.WriteResult();
 
-                Console.Write("PerformTask:OK");
+                Console.WriteLine("PerformTask:OK");
             }
             catch (System.Exception ex)
             {
@@ -1006,6 +1030,7 @@ namespace Swift.Core
                 p.StartInfo.RedirectStandardOutput = true;
                 p.StartInfo.RedirectStandardError = true;
                 p.StartInfo.CreateNoWindow = true;
+                p.EnableRaisingEvents = true;
 
                 p.OutputDataReceived += (s, e) =>
                 {
@@ -1025,8 +1050,11 @@ namespace Swift.Core
                                 File.WriteAllText(physicalPath, "-1:" + e.Data);
                             }
 
-                            p.Close();
-                            p.Dispose();
+                            if (!p.HasExited)
+                            {
+                                p.Close();
+                                p.Dispose();
+                            }
                         }
                         else
                         {
@@ -1042,8 +1070,23 @@ namespace Swift.Core
                         string physicalPath = Path.Combine(CurrentJobSpacePath, "taskmerge.status");
                         File.WriteAllText(physicalPath, "-1:" + e.Data);
 
-                        p.Close();
-                        p.Dispose();
+                        if (!p.HasExited)
+                        {
+                            p.Close();
+                            p.Dispose();
+                        }
+                    }
+                };
+
+                p.Exited += (s, e) =>
+                {
+                    try
+                    {
+                        LogWriter.Write("任务执行进程退出:" + p.ExitCode);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWriter.Write("任务执行进程退出处理失败:" + ex.Message);
                     }
                 };
 

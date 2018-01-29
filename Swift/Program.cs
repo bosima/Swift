@@ -93,6 +93,7 @@ namespace Swift
             {
                 foreach (var msg in messages)
                 {
+                    
                     Console.WriteLine(string.Format("{0} {1}", DateTime.Now.ToString(), msg));
                 }
 

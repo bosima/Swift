@@ -474,9 +474,11 @@ namespace Swift.Core
                 historyMember.Status = 1;
                 historyMember.Role = member.Role;
                 historyMember.OnlineTime = DateTime.Now;
+                historyMember.Cluster = this;
             }
             else
             {
+                member.Cluster = this;
                 memberList.Add(member);
             }
 
@@ -552,7 +554,8 @@ namespace Swift.Core
             List<MemberWrapper> needRemoveList = new List<MemberWrapper>();
             foreach (var configMember in configMemberList)
             {
-                var isHealth = ConsulService.CheckHealth(configMember.Id);
+                var serviceId = string.Format("Swift-{0}-Member-{1}", Name, configMember.Id);
+                var isHealth = ConsulService.CheckHealth(serviceId);
                 configMember.Status = isHealth ? 1 : 0;
 
                 if (configMember.Status == 0)
@@ -599,7 +602,9 @@ namespace Swift.Core
         /// </summary>
         private void RegisterToConsul()
         {
-            ConsulService.RegisterService(localIP, localIP, 15);
+            var serviceId = string.Format("Swift-{0}-Member-{1}", Name, localIP);
+            var serviceName = string.Format("Swift-{0}-Member-{1}", Name, localIP);
+            ConsulService.RegisterService(serviceId, serviceName, 15);
 
             Task.Factory.StartNew(() =>
             {
@@ -607,7 +612,7 @@ namespace Swift.Core
                 {
                     try
                     {
-                        ConsulService.PassTTL(localIP);
+                        ConsulService.PassTTL(serviceId);
                     }
                     catch (Exception ex)
                     {
@@ -1310,7 +1315,7 @@ namespace Swift.Core
             if (!Directory.Exists(jobRootPath))
             {
                 LogWriter.Write(string.Format("作业包目录为空，没有作业包真高兴！"));
-                return null;
+                return newJobConfigs;
             }
 
             // 先检查新的作业包

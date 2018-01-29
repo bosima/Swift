@@ -153,7 +153,8 @@ namespace Swift.WebUI.Controllers
             List<MemberWrapper> needRemoveList = new List<MemberWrapper>();
             foreach (var configMember in configMemberList)
             {
-                var isHealth = ConsulService.CheckHealth(configMember.Id);
+                var serviceId = string.Format("Swift-{0}-Member-{1}", clusterName, configMember.Id);
+                var isHealth = ConsulService.CheckHealth(serviceId);
                 configMember.Status = isHealth ? 1 : 0;
             }
 
