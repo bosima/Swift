@@ -48,25 +48,28 @@
                         </tr>
                         @{
                             var tasks = item.TaskPlan;
-                            foreach (var memberId in tasks.Keys)
+                            if (tasks != null)
                             {
-                                var subTasks = tasks[memberId];
-                                if (subTasks != null && subTasks.Any())
+                                foreach (var memberId in tasks.Keys)
                                 {
-                                    foreach (var task in subTasks)
+                                    var subTasks = tasks[memberId];
+                                    if (subTasks != null && subTasks.Any())
                                     {
+                                        foreach (var task in subTasks)
+                                        {
                                         <tr>
                                             <td>@task.Id</td>
                                             <td>@memberId</td>
                                             <td>@task.Status</td>
                                         </tr>
+                                            }
+                                        }
                                     }
                                 }
                             }
-                        }
                     </table>
                 </div>
-                <a href="#" class="btnShowTasklist" id="btnShowTasklist_@item.Id">查看</a>
+                <a href="javascript:void(0)" class="btnShowTasklist" id="btnShowTasklist_@item.Id">查看</a>
             </td>
         </tr>
     }

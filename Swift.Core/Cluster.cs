@@ -602,6 +602,9 @@ namespace Swift.Core
         /// </summary>
         private void RegisterToConsul()
         {
+            //ConsulService.DeregisterService(localIP);
+            //ConsulService.DeregisterServiceCheck("CHECK-" + localIP);
+
             var serviceId = string.Format("Swift-{0}-Member-{1}", Name, localIP);
             var serviceName = string.Format("Swift-{0}-Member-{1}", Name, localIP);
             ConsulService.RegisterService(serviceId, serviceName, 15);
@@ -668,6 +671,8 @@ namespace Swift.Core
 
             lock (refreshLocker)
             {
+                LogWriter.Write("开始刷新任务列表...");
+
                 try
                 {
                     var latestTasks = LoadTasks();
@@ -726,10 +731,12 @@ namespace Swift.Core
                             }
                         }
                     }
+
+                    LogWriter.Write("结束刷新任务列表。");
                 }
                 catch (Exception ex)
                 {
-                    LogWriter.Write(string.Format("刷新任务异常:{0}", ex.StackTrace));
+                    LogWriter.Write(string.Format("刷新任务异常:{0}", ex.Message), ex);
                 }
             }
 
@@ -783,7 +790,6 @@ namespace Swift.Core
             {
                 if (jobRecord.Status == EnumJobRecordStatus.Pending || jobRecord.Status == EnumJobRecordStatus.PlanMaking)
                 {
-                    //Logger.Write(string.Format("作业任务尚未发放:{0},{1}", job.Name, job.Id));
                     return null;
                 }
 
@@ -857,8 +863,10 @@ namespace Swift.Core
                     // 从Consul查询作业的最新记录
                     if (jobConfigs != null && jobConfigs.Count > 0)
                     {
-                        foreach (var jobConfig in jobConfigs)
+                        for (int i = jobConfigs.Count - 1; i >= 0; i--)
                         {
+                            var jobConfig = jobConfigs[i];
+
                             // 如果有新的作业记录了，旧的作业记录将删除
                             var notCurrentJobRecord = activedJobs.Where(d => d.Name == jobConfig.Name && d.Id != jobConfig.LastRecordId);
                             if (notCurrentJobRecord.Any())

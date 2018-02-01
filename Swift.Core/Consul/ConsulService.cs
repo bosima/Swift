@@ -55,6 +55,43 @@ namespace Swift.Core.Consul
         }
 
         /// <summary>
+        /// 注销服务
+        /// </summary>
+        /// <param name="serviceId"></param>
+        public static bool DeregisterService(string serviceId)
+        {
+            using (var client = new ConsulClient())
+            {
+                var deRegResult = client.Agent.ServiceDeregister(serviceId).Result;
+                if (deRegResult.StatusCode != System.Net.HttpStatusCode.OK)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 注销健康检测
+        /// </summary>
+        /// <param name="checkId"></param>
+        /// <returns></returns>
+        public static bool DeregisterServiceCheck(string checkId)
+        {
+            using (var client = new ConsulClient())
+            {
+                var deRegResult = client.Agent.CheckDeregister(checkId).Result;
+                if (deRegResult.StatusCode != System.Net.HttpStatusCode.OK)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// 注册服务，使用此方法注册的服务需要定时UpdateTTL
         /// </summary>
         /// <param name="serviceId"></param>
