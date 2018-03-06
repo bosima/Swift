@@ -124,15 +124,18 @@ namespace Swift.Core
 
             var jobRecordKey = string.Format("Swift/{0}/Jobs/{1}/Records/{2}", Job.Cluster.Name, Job.Name, Job.Id);
             KVPair jobRecordKV;
-
+            int updateIndex = 0;
             do
             {
-                Thread.Sleep(100);
+                updateIndex++;
+                Log.LogWriter.Write("UpdateTaskStatus Execute Index:" + updateIndex, Log.LogLevel.Info);
+
+                Thread.Sleep(1000);
 
                 jobRecordKV = ConsulKV.Get(jobRecordKey);
                 if (jobRecordKV == null)
                 {
-                    // 不应该进入这里
+                    Log.LogWriter.Write(string.Format("更新任务状态时找不到作业是什么鬼？{0}", jobRecordKey), Log.LogLevel.Error);
                     break;
                 }
 
@@ -140,12 +143,15 @@ namespace Swift.Core
                 var consulTask = jobRecord.TaskPlan.SelectMany(d => d.Value.Where(t => t.Id == Id)).FirstOrDefault();
                 if (consulTask == null)
                 {
-                    // 不应该进入这里
+                    Log.LogWriter.Write(string.Format("更新任务状态时找不到任务是什么鬼？{0}", jobRecordKey), Log.LogLevel.Error);
                     break;
                 }
 
                 consulTask.Status = Status;
-                jobRecordKV.Value = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(jobRecord));
+                var jobRecordJson = JsonConvert.SerializeObject(jobRecord);
+                jobRecordKV.Value = Encoding.UTF8.GetBytes(jobRecordJson);
+
+                Log.LogWriter.Write("UpdateTaskStatus Value[" + jobRecordKV.ModifyIndex + "]" + jobRecordJson, Log.LogLevel.Trace);
 
             } while (!ConsulKV.CAS(jobRecordKV));
         }

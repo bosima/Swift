@@ -712,7 +712,7 @@ namespace Swift.Core
                             activedTasks.Add(newTask);
                             OnTaskJoinEventHandler?.Invoke(newTask);
 
-                            LogWriter.Write(string.Format("已添加新任务:{0},{1},{2}", newTask.Job.Name, newTask.Job.Id, newTask.Id));
+                            LogWriter.Write(string.Format("发现集群任务:{0},{1},{2}", newTask.Job.Name, newTask.Job.Id, newTask.Id));
                         }
                     }
 
@@ -727,7 +727,7 @@ namespace Swift.Core
                                 activedTasks.Remove(oldTask);
                                 OnTaskRemoveEventHandler?.Invoke(oldTask);
 
-                                LogWriter.Write(string.Format("已移除任务:{0},{1},{2}", oldTask.Job.Name, oldTask.Job.Id, oldTask.Id));
+                                LogWriter.Write(string.Format("移除集群任务:{0},{1},{2}", oldTask.Job.Name, oldTask.Job.Id, oldTask.Id));
                             }
                         }
                     }
@@ -1224,13 +1224,13 @@ namespace Swift.Core
                     }
 
                     // 获取移除的JobConfig
-                    List<JobConfig> removeJobConfigList = new List<JobConfig>();
+                    List<string> removeJobConfigList = new List<string>();
                     foreach (var jobConfig in jobConfigs)
                     {
                         var newJobConfig = latestJobConfigs.Where(d => d.Name == jobConfig.Name).FirstOrDefault();
                         if (newJobConfig == null)
                         {
-                            removeJobConfigList.Add(newJobConfig);
+                            removeJobConfigList.Add(newJobConfig.Name);
                         }
                     }
 
@@ -1260,7 +1260,7 @@ namespace Swift.Core
                     {
                         for (int i = jobConfigs.Count - 1; i >= 0; i--)
                         {
-                            if (removeJobConfigList.Where(d => d.Name == jobConfigs[i].Name).Any())
+                            if (removeJobConfigList.Where(d => d == jobConfigs[i].Name).Any())
                             {
                                 var removeJobConfig = jobConfigs[i];
 

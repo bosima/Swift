@@ -175,17 +175,9 @@ namespace Swift.Core
                 // 遍历已经制定计划完毕的作业，准备开展作业
                 foreach (var job in taskPlanCompletedJobs)
                 {
-                    // 判断作业包是否存在
-                    var jobPkg = Path.Combine("Jobs", job.Name + ".zip");
-                    if (!File.Exists(jobPkg))
-                    {
-                        Download(Cluster.Manager, "job/package", job.Name + ".zip");
-                        LogWriter.Write(string.Format("已拉取作业包:{0}", job.Name + ".zip"));
-                    }
-                    //else
-                    //{
-                    //    Logger.Write(string.Format("作业包已存在:{0}", job.Name + ".zip"));
-                    //}
+                    // 不管作业包是否存在，都进行下载
+                    Download(Cluster.Manager, "job/package", job.Name + ".zip");
+                    LogWriter.Write(string.Format("已拉取作业包:{0}", job.Name + ".zip"));
 
                     // 判断作业记录目录是否存在
                     if (!Directory.Exists(job.CurrentJobSpacePath))

@@ -18,6 +18,7 @@ namespace Swift.DemoJob
             if (paras.ContainsKey("-d"))
             {
                 var jobConfigPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "job.json");
+
                 var jobConfigJson = File.ReadAllText(jobConfigPath, Encoding.UTF8);
                 var jobWrapper = JobBase.Deserialize(jobConfigJson, null);
                 var demoJob = jobWrapper.ConvertTo<DemoJob>();

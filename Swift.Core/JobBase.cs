@@ -296,6 +296,7 @@ namespace Swift.Core
 
                 // 当前作业文件夹
                 var currentJobStartPath = Path.Combine(CurrentJobSpacePath, FileName);
+                LogWriter.Write("CallJobSplitMethod->currentJobStartPath:" + currentJobStartPath, Log.LogLevel.Debug);
 
                 string m_cmdLine = string.Format(" -d");
                 p.StartInfo.WorkingDirectory = CurrentJobSpacePath;
@@ -310,6 +311,12 @@ namespace Swift.Core
 
                 p.OutputDataReceived += (s, e) =>
                 {
+                    if (p == null)
+                    {
+                        LogWriter.Write("OutputDataReceived:作业分割进程已退出。");
+                        return;
+                    }
+
                     if (e.Data != null && e.Data.StartsWith("GenerateTasks"))
                     {
                         if (e.Data.StartsWith("GenerateTasks:OK"))
@@ -334,6 +341,12 @@ namespace Swift.Core
 
                 p.ErrorDataReceived += (s, e) =>
                 {
+                    if (p == null)
+                    {
+                        LogWriter.Write("ErrorDataReceived:作业分割进程已退出。");
+                        return;
+                    }
+
                     if (e.Data != null)
                     {
                         string physicalPath = Path.Combine(CurrentJobSpacePath, "taskcreate.status");
@@ -349,6 +362,12 @@ namespace Swift.Core
 
                 p.Exited += (s, e) =>
                 {
+                    if (p == null)
+                    {
+                        LogWriter.Write("Exited:作业分割进程已退出。");
+                        return;
+                    }
+
                     try
                     {
                         LogWriter.Write("作业分割进程退出:" + p.ExitCode);
