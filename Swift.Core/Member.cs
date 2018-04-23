@@ -215,7 +215,6 @@ namespace Swift.Core
             var fileDirectory = Path.Combine(Environment.CurrentDirectory, fileName.Substring(0, fileName.LastIndexOf('/')));
             if (!Directory.Exists(fileDirectory))
             {
-                //throw new DirectoryNotFoundException("要下载文件的目录不存在:" + fileDirectory);
                 Directory.CreateDirectory(fileDirectory);
             }
 
@@ -230,7 +229,7 @@ namespace Swift.Core
         /// <param name="context"></param>
         private byte[] ProcessRequest(System.Net.HttpListenerContext context)
         {
-            LogWriter.Write(string.Format("收到消息：{0}", context.Request.RawUrl));
+            LogWriter.Write(string.Format("收到请求：{0}", context.Request.RawUrl));
 
             // 输入数据流
             byte[] inputBytes = new byte[context.Request.ContentLength64];
@@ -291,7 +290,7 @@ namespace Swift.Core
             fileName = HttpUtility.UrlDecode(fileName);
 
             string filePath = Path.Combine(Environment.CurrentDirectory, fileName.Replace('/', Path.DirectorySeparatorChar));
-            LogWriter.Write(string.Format("下载文件本地地址:{0}", filePath));
+            LogWriter.Write(string.Format("处理下载请求:{0}", filePath));
 
             return File.ReadAllBytes(filePath);
         }

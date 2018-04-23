@@ -107,6 +107,12 @@ namespace Swift.Core
         public event JobConfigJoinEvent OnJobConfigJoinEventHandler;
 
         /// <summary>
+        /// 作业配置更新事件。
+        /// Manager可以订阅此事件，然后通知其它成员更新作业
+        /// </summary>
+        public event JobConfigRemoveEvent OnJobConfigUpdateEventHandler;
+
+        /// <summary>
         /// 作业配置移除事件。
         /// Manager可以订阅此事件，然后通知其它成员删除作业
         /// </summary>
@@ -388,7 +394,7 @@ namespace Swift.Core
             {
                 Id = memberId,
                 Role = EnumMemberRole.Manager,
-                FirstRegisterTime = DateTime.Now,
+
                 OnlineTime = DateTime.Now,
                 Status = 1,
             };
@@ -407,7 +413,6 @@ namespace Swift.Core
             {
                 Id = memberId,
                 Role = EnumMemberRole.Worker,
-                FirstRegisterTime = DateTime.Now,
                 OnlineTime = DateTime.Now,
                 Status = 1,
             };
@@ -478,6 +483,7 @@ namespace Swift.Core
             }
             else
             {
+                member.FirstRegisterTime = DateTime.Now;
                 member.Cluster = this;
                 memberList.Add(member);
             }
@@ -719,7 +725,10 @@ namespace Swift.Core
                     // 移除删除的任务
                     if (removeTaskList.Count > 0)
                     {
-                        for (int i = activedTasks.Count - 1; i >= 0; i--)
+                        LogWriter.Write(string.Format("发现待删除的任务数:{0}", removeTaskList.Count));
+
+                        var activedTasksCount = activedTasks.Count - 1;
+                        for (int i = activedTasksCount; i >= 0; i--)
                         {
                             var oldTask = activedTasks[i];
                             if (removeTaskList.Where(d => d.Id == oldTask.Id).Any())
@@ -1017,7 +1026,6 @@ namespace Swift.Core
                 {
                     LogWriter.Write(string.Format("开始定时创建作业检查..."));
 
-                    var nowHourAndMinute = DateTime.Now.ToString("HH:mm");
                     foreach (var jobConfig in jobConfigs)
                     {
                         if (!string.IsNullOrWhiteSpace(jobConfig.LastRecordId))
@@ -1035,11 +1043,11 @@ namespace Swift.Core
                             }
                         }
 
-                        if (jobConfig.RunTimePlan != null && jobConfig.RunTimePlan.Length > 0)
+                        if (jobConfig.RunTimes != null && jobConfig.RunTimes.Length > 0)
                         {
-                            foreach (var timePlan in jobConfig.RunTimePlan)
+                            foreach (var timePlan in jobConfig.RunTimes)
                             {
-                                if (!string.IsNullOrWhiteSpace(timePlan) && nowHourAndMinute == timePlan)
+                                if (timePlan.CheckIsTime())
                                 {
                                     // 如果作业没有创建，则创建作业，同时更新作业配置
                                     var job = JobBase.CreateInstance(jobConfig, this);
@@ -1097,7 +1105,7 @@ namespace Swift.Core
                 try
                 {
                     var latestJobConfigs = LoadJobConfigsFromDisk();
-                    LogWriter.Write(string.Format("发现作业配置数量:{0}", latestJobConfigs.Count));
+                    LogWriter.Write(string.Format("当前作业配置数量:{0}", latestJobConfigs.Count));
 
                     if (jobConfigs == null)
                     {
@@ -1126,55 +1134,78 @@ namespace Swift.Core
                         }
                     }
 
-                    // 更新配置
+                    // 获取更新的JobConfig
+                    List<JobConfig> updateJobConfigList = new List<JobConfig>();
                     for (int i = jobConfigs.Count - 1; i >= 0; i--)
                     {
                         var jobConfig = jobConfigs[i];
                         var latestJobConfig = latestJobConfigs.Where(d => d.Name == jobConfig.Name).FirstOrDefault();
-                        if (latestJobConfig != null && latestJobConfig.ModifyIndex != jobConfig.ModifyIndex)
+                        if (latestJobConfig != null && latestJobConfig.Version != jobConfig.Version)
                         {
-                            jobConfig = latestJobConfig;
+                            updateJobConfigList.Add(latestJobConfig);
                         }
                     }
 
                     // 添加新JobConfig
                     if (newJobConfigList.Count > 0)
                     {
-                        foreach (var jobConfig in newJobConfigList)
+                        for (int i = newJobConfigList.Count - 1; i >= 0; i--)
                         {
-                            LogWriter.Write("开始保存作业配置：" + jobConfig.Name);
-                            jobConfigs.Add(jobConfig);
-                            var result = TryAddJobConfig(jobConfig);
-                            LogWriter.Write("保存作业配置结果：" + result.ToString());
+                            // 内存中添加
+                            var newJobConfig = newJobConfigList[i];
+                            LogWriter.Write("开始添加作业配置[" + newJobConfig.Name + "]");
+
+                            jobConfigs.Add(newJobConfig);
+                            LogWriter.Write("已添加作业配置[" + newJobConfig.Name + "]到内存");
+
+                            // Consul中添加
+                            var result = TryAddJobConfig(newJobConfig);
+                            LogWriter.Write("添加作业配置[" + newJobConfig.Name + "]到Consul结果:" + result.ToString());
 
                             if (result)
                             {
-                                OnJobConfigJoinEventHandler?.Invoke(jobConfig);
+                                OnJobConfigJoinEventHandler?.Invoke(newJobConfig);
                             }
+                        }
+                    }
+
+                    // 更新JobConfig
+                    if (updateJobConfigList.Count > 0)
+                    {
+                        for (int i = updateJobConfigList.Count - 1; i >= 0; i--)
+                        {
+                            var updateJobConfig = jobConfigs.Where(d => d.Name == updateJobConfigList[i].Name).FirstOrDefault();
+                            LogWriter.Write("开始更新作业配置[" + updateJobConfig.Name + "]");
+
+                            // 内存中更新
+                            updateJobConfig = updateJobConfigList[i];
+                            LogWriter.Write("已更新内存中作业配置[" + updateJobConfig.Name + "]");
+
+                            // Consul中更新
+                            UpdateJobConfig(updateJobConfig);
+                            LogWriter.Write("已更新Consul中作业配置[" + updateJobConfig.Name + "]");
+
+                            OnJobConfigUpdateEventHandler?.Invoke(updateJobConfig);
                         }
                     }
 
                     // 移除删除的JobConfig
                     if (removeJobConfigList.Count > 0)
                     {
-                        for (int i = jobConfigs.Count - 1; i >= 0; i--)
+                        for (int i = removeJobConfigList.Count - 1; i >= 0; i--)
                         {
-                            if (removeJobConfigList.Where(d => d.Name == jobConfigs[i].Name).Any())
-                            {
-                                var removeJobConfig = jobConfigs[i];
-                                LogWriter.Write("开始移除作业配置：" + removeJobConfig.Name.ToString());
+                            var removeJobConfig = jobConfigs.Where(d => d.Name == removeJobConfigList[i].Name).FirstOrDefault();
+                            LogWriter.Write("开始移除作业配置[" + removeJobConfig.Name + "]");
 
-                                // 从内存中移除
-                                var mRemoveResult = jobConfigs.Remove(removeJobConfig);
-                                LogWriter.Write("内存中移除作业配置结果：" + mRemoveResult.ToString());
+                            // 内存中移除
+                            var mRemoveResult = jobConfigs.Remove(removeJobConfig);
+                            LogWriter.Write("内存中移除作业配置[" + removeJobConfig.Name + "]结果:" + mRemoveResult.ToString());
 
-                                // TODO:可以仅作删除标记
-                                // 从配置中移除
-                                var configRemoveResult = RemoveJobConfig(removeJobConfig);
-                                LogWriter.Write("配置中移除作业配置结果：" + configRemoveResult.ToString());
+                            // Consul中移除
+                            var configRemoveResult = RemoveJobConfig(removeJobConfig);
+                            LogWriter.Write("Consul中移除作业配置[" + removeJobConfig.Name + "]结果:" + configRemoveResult.ToString());
 
-                                OnJobConfigRemoveEventHandler?.Invoke(removeJobConfig);
-                            }
+                            OnJobConfigRemoveEventHandler?.Invoke(removeJobConfig);
                         }
                     }
                 }
@@ -1234,24 +1265,35 @@ namespace Swift.Core
                         }
                     }
 
-                    // 更新配置
+                    // 更新JobConfig
                     for (int i = jobConfigs.Count - 1; i >= 0; i--)
                     {
                         var jobConfig = jobConfigs[i];
                         var latestJobConfig = latestJobConfigs.Where(d => d.Name == jobConfig.Name).FirstOrDefault();
-                        if (latestJobConfig != null && latestJobConfig.ModifyIndex != jobConfig.ModifyIndex)
+                        if (latestJobConfig != null)
                         {
-                            jobConfigs[i] = latestJobConfig;
+                            if (latestJobConfig.ModifyIndex != jobConfig.ModifyIndex)
+                            {
+                                jobConfigs[i] = latestJobConfig;
+                            }
+
+                            if (latestJobConfig.Version != jobConfig.Version)
+                            {
+                                jobConfigs[i] = latestJobConfig;
+                                OnJobConfigUpdateEventHandler?.Invoke(latestJobConfig);
+                            }
                         }
                     }
 
                     // 添加新JobConfig
                     if (newJobConfigList.Count > 0)
                     {
-                        foreach (var jobConfig in newJobConfigList)
+                        foreach (var newJobConfig in newJobConfigList)
                         {
-                            jobConfigs.Add(jobConfig);
-                            OnJobConfigJoinEventHandler?.Invoke(jobConfig);
+                            jobConfigs.Add(newJobConfig);
+                            LogWriter.Write("已添加作业配置[" + newJobConfig.Name + "]到内存");
+
+                            OnJobConfigJoinEventHandler?.Invoke(newJobConfig);
                         }
                     }
 
@@ -1264,9 +1306,8 @@ namespace Swift.Core
                             {
                                 var removeJobConfig = jobConfigs[i];
 
-                                // 从内存中移除
                                 var mRemoveResult = jobConfigs.Remove(removeJobConfig);
-                                LogWriter.Write("内存中移除作业配置结果：" + mRemoveResult.ToString());
+                                LogWriter.Write("内存中移除作业配置[" + removeJobConfig.Name + "]结果:" + mRemoveResult.ToString());
 
                                 OnJobConfigRemoveEventHandler?.Invoke(removeJobConfig);
                             }
@@ -1289,6 +1330,8 @@ namespace Swift.Core
         /// <returns></returns>
         private bool TryAddJobConfig(JobConfig jobConfig)
         {
+            // TODO:Consul中可能已经存在了,这时候走更新UpdateJobConfig
+
             var jobConfigKey = string.Format("Swift/{0}/Jobs/{1}/Config", Name, jobConfig.Name);
             var configKV = ConsulKV.Get(jobConfigKey);
             if (configKV == null)
@@ -1297,7 +1340,46 @@ namespace Swift.Core
             }
 
             configKV.Value = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(jobConfig));
-            return ConsulKV.CAS(configKV);
+            var result = ConsulKV.CAS(configKV);
+            return result;
+        }
+
+        /// <summary>
+        /// 更新作业配置到Conusl
+        /// </summary>
+        /// <param name="jobConfig"></param>
+        /// <returns></returns>
+        private bool UpdateJobConfig(JobConfig jobConfig)
+        {
+            KVPair configKV = null;
+
+            do
+            {
+                var jobConfigKey = string.Format("Swift/{0}/Jobs/{1}/Config", Name, jobConfig.Name);
+                configKV = ConsulKV.Get(jobConfigKey);
+                if (configKV == null)
+                {
+                    configKV = ConsulKV.Create(jobConfigKey);
+                }
+
+                JobConfig oldJobConfig = null;
+                if (configKV.Value != null)
+                {
+                    oldJobConfig = JsonConvert.DeserializeObject<JobConfig>(Encoding.UTF8.GetString(configKV.Value));
+                }
+
+                if (oldJobConfig != null)
+                {
+                    jobConfig.LastRecordId = oldJobConfig.LastRecordId;
+                    jobConfig.LastRecordStartTime = oldJobConfig.LastRecordStartTime;
+                    jobConfig.ModifyIndex = oldJobConfig.ModifyIndex;
+                }
+
+                configKV.Value = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(jobConfig));
+
+            } while (!ConsulKV.CAS(configKV));
+
+            return true;
         }
 
         /// <summary>
@@ -1317,52 +1399,117 @@ namespace Swift.Core
         /// <returns></returns>
         private List<JobConfig> LoadJobConfigsFromDisk()
         {
-            List<JobConfig> newJobConfigs = new List<JobConfig>();
+            List<JobConfig> latestJobConfigs = new List<JobConfig>();
 
             var jobRootPath = Path.Combine(Environment.CurrentDirectory, "Jobs");
             if (!Directory.Exists(jobRootPath))
             {
-                LogWriter.Write(string.Format("作业包目录为空，没有作业包真高兴！"));
-                return newJobConfigs;
+                LogWriter.Write(string.Format("作业包目录为空，不能再轻松了。"));
+                return latestJobConfigs;
             }
 
-            // 先检查新的作业包
-            var jobPackages = Directory.GetFiles(jobRootPath, "*.zip");
-            foreach (var pkg in jobPackages)
+            // 查找zip作业包
+            var jobPkgPaths = Directory.GetFiles(jobRootPath, "*.zip");
+            foreach (var pkgPath in jobPkgPaths)
             {
-                int fileNameStartIndex = pkg.LastIndexOf(Path.DirectorySeparatorChar) + 1;
-                string pkgName = pkg.Substring(fileNameStartIndex, pkg.LastIndexOf('.') - fileNameStartIndex);
-                var jobPath = Path.Combine(jobRootPath, pkgName, "config");
+                // 确认作业配置文件
+                JobConfig jobConfig = EnsureJobConfigFileIsLatest(pkgPath);
+                latestJobConfigs.Add(jobConfig);
+            }
 
-                if (!Directory.Exists(jobPath))
+            return latestJobConfigs;
+        }
+
+        /// <summary>
+        /// 确保作业配置文件是最新的版本
+        /// </summary>
+        private static JobConfig EnsureJobConfigFileIsLatest(string pkgPath)
+        {
+            // 当前作业包更新时间
+            var pkgUpdateTime = File.GetLastWriteTime(pkgPath);
+
+            // 当前作业包版本
+            var pkgVersion = pkgUpdateTime.ToString("yyyyMMddHHmmss");
+
+            // 作业根目录
+            var jobRootPath = Path.Combine(Environment.CurrentDirectory, "Jobs");
+
+            // 作业名称
+            int fileNameStartIndex = pkgPath.LastIndexOf(Path.DirectorySeparatorChar) + 1;
+            string pkgName = pkgPath.Substring(fileNameStartIndex, pkgPath.LastIndexOf('.') - fileNameStartIndex);
+
+            // 作业配置文件路径
+            var jobConfigDirectory = Path.Combine(jobRootPath, pkgName, "config");
+
+            // 从作业包提取配置文件，如果已经存在则忽略
+            ExtractJobConfigFile(pkgPath, jobConfigDirectory);
+
+            // 反序列化作业配置文件
+            string jobConfigPath = Path.Combine(jobConfigDirectory, "job.json");
+            JobConfig jobConfig = new JobConfig(jobConfigPath);
+
+            // 如果是新的作业包，设置作业包版本
+            if (string.IsNullOrWhiteSpace(jobConfig.Version))
+            {
+                jobConfig.Version = pkgVersion;
+                UpdateJobConfigFile(jobConfigPath, jobConfig);
+            }
+
+            // 如果是旧的作业包，更新作业包配置
+            if (!string.IsNullOrWhiteSpace(jobConfig.Version))
+            {
+                ExtractJobConfigFile(pkgPath, jobConfigDirectory, true);
+                var latestJobConfig = new JobConfig(jobConfigPath);
+                latestJobConfig.LastRecordId = jobConfig.LastRecordId;
+                latestJobConfig.LastRecordStartTime = jobConfig.LastRecordStartTime;
+                latestJobConfig.ModifyIndex = jobConfig.ModifyIndex;
+                latestJobConfig.Version = pkgVersion;
+                UpdateJobConfigFile(jobConfigPath, latestJobConfig);
+
+                jobConfig = latestJobConfig;
+            }
+
+            return jobConfig;
+        }
+
+        /// <summary>
+        /// 更新作业配置文件
+        /// </summary>
+        /// <param name="configPath"></param>
+        /// <param name="config"></param>
+        private static void UpdateJobConfigFile(string configPath, JobConfig config)
+        {
+            File.WriteAllText(configPath, JsonConvert.SerializeObject(config));
+        }
+
+        /// <summary>
+        /// 提取作业配置文件
+        /// </summary>
+        /// <param name="pkgPath"></param>
+        /// <param name="configDirectory"></param>
+        /// <param name="isCover">是否覆盖</param>
+        private static void ExtractJobConfigFile(string pkgPath, string configDirectory, bool isCover = false)
+        {
+            if (isCover || !Directory.Exists(configDirectory))
+            {
+                Directory.CreateDirectory(configDirectory);
+                var filePath = Path.Combine(configDirectory, "job.json");
+
+                if (isCover || !File.Exists(filePath))
                 {
-                    Directory.CreateDirectory(jobPath);
-
-                    // 只把作业配置文件取出来
                     try
                     {
-                        using (var zip = ZipFile.Open(pkg, ZipArchiveMode.Read))
+                        using (var zip = ZipFile.Open(pkgPath, ZipArchiveMode.Read))
                         {
-                            zip.GetEntry("job.json").ExtractToFile(Path.Combine(jobPath, "job.json"));
+                            zip.GetEntry("job.json").ExtractToFile(filePath, true);
                         }
                     }
                     catch (Exception ex)
                     {
-                        throw new JobPackageConfigExtractException(string.Format("作业包[{0}]提取配置文件异常", pkgName), ex);
+                        throw new JobPackageConfigExtractException(string.Format("作业包[{0}]提取配置文件异常", pkgPath), ex);
                     }
                 }
             }
-
-            // 然后检查所有作业目录
-            var jobDirectories = Directory.GetDirectories(jobRootPath);
-            foreach (var jobDir in jobDirectories)
-            {
-                string jobConfigPath = Path.Combine(jobDir, "config", "job.json");
-                JobConfig jobConfig = new JobConfig(jobConfigPath);
-                newJobConfigs.Add(jobConfig);
-            }
-
-            return newJobConfigs;
         }
 
         /// <summary>

@@ -38,6 +38,15 @@ namespace Swift.Core
         }
 
         /// <summary>
+        /// 作业版本
+        /// </summary>
+        public string Version
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
         /// 文件名称
         /// </summary>
         public string FileName
@@ -178,19 +187,8 @@ namespace Swift.Core
             job.FileName = jobConfig.FileName;
             job.Cluster = cluster;
             job.CreateTime = DateTime.Now;
+            job.Version = jobConfig.Version;
             return job;
-        }
-
-        /// <summary>
-        /// 从配置文件路径创建实例
-        /// </summary>
-        /// <param name="physicalConfigPath"></param>
-        /// <param name="cluster"></param>
-        /// <returns></returns>
-        public static JobWrapper CreateInstance(string physicalConfigPath, Cluster cluster)
-        {
-            JobConfig config = new JobConfig(physicalConfigPath);
-            return CreateInstance(config, cluster);
         }
 
         /// <summary>

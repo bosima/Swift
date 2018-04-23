@@ -16,6 +16,9 @@
             Id
         </th>
         <th>
+            Version
+        </th>
+        <th>
             创建时间
         </th>
         <th>
@@ -28,50 +31,53 @@
 
     @foreach (var item in Model)
     {
-        <tr>
-            <td>
-                @Html.DisplayFor(modelItem => item.Id)
-            </td>
-            <td>
-                @Html.DisplayFor(modelItem => item.CreateTime)
-            </td>
-            <td>
-                @Html.DisplayFor(modelItem => item.Status)
-            </td>
-            <td>
-                <div id="taskList_@item.Id" style="display:none">
-                    <table class="table table-striped table-hover">
-                        <tr>
-                            <th>Id</th>
-                            <th>成员</th>
-                            <th>状态</th>
-                        </tr>
-                        @{
-                            var tasks = item.TaskPlan;
-                            if (tasks != null)
+    <tr>
+        <td>
+            @Html.DisplayFor(modelItem => item.Id)
+        </td>
+        <td>
+            @Html.DisplayFor(modelItem => item.Version)
+        </td>
+        <td>
+            @Html.DisplayFor(modelItem => item.CreateTime)
+        </td>
+        <td>
+            @Html.DisplayFor(modelItem => item.Status)
+        </td>
+        <td>
+            <div id="taskList_@item.Id" style="display:none">
+                <table class="table table-striped table-hover">
+                    <tr>
+                        <th>Id</th>
+                        <th>成员</th>
+                        <th>状态</th>
+                    </tr>
+                    @{
+                    var tasks = item.TaskPlan;
+                    if (tasks != null)
+                    {
+                        foreach (var memberId in tasks.Keys)
+                        {
+                            var subTasks = tasks[memberId];
+                            if (subTasks != null && subTasks.Any())
                             {
-                                foreach (var memberId in tasks.Keys)
+                                foreach (var task in subTasks)
                                 {
-                                    var subTasks = tasks[memberId];
-                                    if (subTasks != null && subTasks.Any())
-                                    {
-                                        foreach (var task in subTasks)
-                                        {
-                                        <tr>
-                                            <td>@task.Id</td>
-                                            <td>@memberId</td>
-                                            <td>@task.Status</td>
-                                        </tr>
-                                            }
-                                        }
-                                    }
-                                }
+                                    <tr>
+                                        <td>@task.Id</td>
+                                        <td>@memberId</td>
+                                        <td>@task.Status</td>
+                                    </tr>
                             }
-                    </table>
-                </div>
-                <a href="javascript:void(0)" class="btnShowTasklist" id="btnShowTasklist_@item.Id">查看</a>
-            </td>
-        </tr>
+                        }
+                    }
+                }
+                    }
+                </table>
+            </div>
+            <a href="javascript:void(0)" class="btnShowTasklist" id="btnShowTasklist_@item.Id">查看</a>
+        </td>
+    </tr>
     }
 
 </table>

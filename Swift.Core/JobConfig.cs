@@ -25,6 +25,11 @@ namespace Swift.Core
         public DateTime? LastRecordStartTime { get; set; }
 
         /// <summary>
+        /// 使用作业包的文件最后更新时间
+        /// </summary>
+        public string Version { get; set; }
+
+        /// <summary>
         /// 作业名称
         /// </summary>
         public string Name { get; set; }
@@ -40,9 +45,19 @@ namespace Swift.Core
         public string JobClassName { get; set; }
 
         /// <summary>
-        /// 运行时间计划，格式HH:mm
+        /// 运行时间计划，可以指定多个运行时间。
+        /// 单个的格式:
+        /// HH:mm 每天定时运行
+        /// ddd HH:mm 每周定时运行
+        /// MM-dd HH:mm 每月定时运行
+        /// yyyy-MM-dd HH:mm 定时运行一次
         /// </summary>
         public string[] RunTimePlan { get; set; }
+
+        /// <summary>
+        /// 运行时间
+        /// </summary>
+        public PlanRunTime[] RunTimes { get; set; }
 
         /// <summary>
         /// 修改索引
@@ -94,6 +109,7 @@ namespace Swift.Core
             FileName = jobConfig.FileName;
             JobClassName = jobConfig.JobClassName;
             RunTimePlan = jobConfig.RunTimePlan;
+            RunTimes = jobConfig.RunTimes;
         }
 
         /// <summary>
@@ -116,6 +132,16 @@ namespace Swift.Core
             try
             {
                 jobConfig = JsonConvert.DeserializeObject<JobConfig>(jobConfigJson);
+
+                if (jobConfig.RunTimePlan != null && jobConfig.RunTimePlan.Length > 0)
+                {
+                    List<PlanRunTime> runTimeList = new List<PlanRunTime>();
+                    foreach (var rtStr in jobConfig.RunTimePlan)
+                    {
+                        runTimeList.Add(new PlanRunTime(rtStr));
+                    }
+                    jobConfig.RunTimes = runTimeList.ToArray();
+                }
             }
             catch (Exception ex)
             {
@@ -123,31 +149,6 @@ namespace Swift.Core
             }
 
             return jobConfig;
-        }
-
-        /// <summary>
-        /// 保存作业包
-        /// </summary>
-        /// <param name="fileName"></param>
-        /// <param name="data"></param>
-        public static void SaveJobPackage(string fileName, byte[] data)
-        {
-            string pkgPath = Path.Combine(Environment.CurrentDirectory, "Jobs", fileName);
-            File.WriteAllBytes(pkgPath, data);
-
-            string pkgName = fileName.Replace(".zip", "");
-            var jobPath = Path.Combine(Environment.CurrentDirectory, "Jobs", pkgName, "config");
-
-            if (!Directory.Exists(jobPath))
-            {
-                Directory.CreateDirectory(jobPath);
-
-                // 只把作业配置文件取出来
-                using (var zip = ZipFile.Open(pkgPath, ZipArchiveMode.Read))
-                {
-                    zip.GetEntry("job.json").ExtractToFile(Path.Combine(jobPath, "job.json"));
-                }
-            }
         }
     }
 }

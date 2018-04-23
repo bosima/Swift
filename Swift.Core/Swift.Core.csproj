@@ -76,6 +76,7 @@
     <Compile Include="MemberCommunicator.cs" />
     <Compile Include="MemberWrapper.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="PlanRunTime.cs" />
     <Compile Include="Worker.cs" />
   </ItemGroup>
   <ItemGroup>
