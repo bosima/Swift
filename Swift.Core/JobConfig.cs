@@ -51,6 +51,8 @@ namespace Swift.Core
         /// ddd HH:mm 每周定时运行
         /// MM-dd HH:mm 每月定时运行
         /// yyyy-MM-dd HH:mm 定时运行一次
+        /// dH 每d小时执行一次
+        /// dm 每m分钟执行一次
         /// </summary>
         public string[] RunTimePlan { get; set; }
 
@@ -110,6 +112,7 @@ namespace Swift.Core
             JobClassName = jobConfig.JobClassName;
             RunTimePlan = jobConfig.RunTimePlan;
             RunTimes = jobConfig.RunTimes;
+            Version = jobConfig.Version;
         }
 
         /// <summary>
@@ -149,6 +152,23 @@ namespace Swift.Core
             }
 
             return jobConfig;
+        }
+
+        /// <summary>
+        /// 从其他实例复制相关字段的值
+        /// </summary>
+        /// <param name="config"></param>
+        public void CopyFrom(JobConfig config)
+        {
+            Name = config.Name;
+            LastRecordId = config.LastRecordId;
+            LastRecordStartTime = config.LastRecordStartTime;
+            Name = config.Name;
+            FileName = config.FileName;
+            JobClassName = config.JobClassName;
+            RunTimePlan = config.RunTimePlan;
+            RunTimes = config.RunTimes;
+            Version = config.Version;
         }
     }
 }

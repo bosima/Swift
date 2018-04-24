@@ -56,7 +56,7 @@ namespace Swift.Core
                 if (Cluster.Workers == null || !Cluster.Workers.Where(d => d.Status == 1).Any())
                 {
                     LogWriter.Write("我是个光杆司令，不想干活...");
-                    Thread.Sleep(10000);
+                    Thread.Sleep(9000);
                     continue;
                 }
 

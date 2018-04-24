@@ -232,12 +232,11 @@ namespace Swift.Core
             TaskPlan = job.TaskPlan;
             Cluster = job.Cluster;
             FileBytes = job.FileBytes;
+            Version = job.Version;
         }
 
         #region 制定作业计划
-        /// <summary>
-        /// 创建生产计划
-        /// </summary>
+     
         public void CreateProductionPlan()
         {
             LogWriter.Write(string.Format("开始创建作业计划：{0},{1}", Name, Id));

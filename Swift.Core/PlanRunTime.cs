@@ -15,10 +15,26 @@ namespace Swift.Core
         {
             StringValue = stringValue;
 
+            /// dH 每d小时执行一次
+            /// dm 每m分钟执行一次
             /// HH:mm 每天定时运行
             /// ddd HH:mm 每周定时运行
             /// MM-dd HH:mm 每月定时运行
             /// yyyy-MM-dd HH:mm 定时运行一次
+
+            if (stringValue.EndsWith("H"))
+            {
+                PlanType = 5;
+                Hour = int.Parse(stringValue.TrimEnd('H'));
+                return;
+            }
+
+            if (stringValue.EndsWith("m"))
+            {
+                PlanType = 6;
+                Minute = int.Parse(stringValue.TrimEnd('m'));
+                return;
+            }
 
             if (!stringValue.Contains(" "))
             {
@@ -119,6 +135,8 @@ namespace Swift.Core
         /// 2 每周定时运行
         /// 3 每月定时运行
         /// 4 定时运行一次
+        /// 5 每d小时运行
+        /// 6 每d分钟运行
         /// </summary>
         public int PlanType { get; private set; }
 
@@ -126,13 +144,40 @@ namespace Swift.Core
         /// 判断当前是否到达运行时间
         /// </summary>
         /// <returns></returns>
-        public bool CheckIsTime()
+        public bool CheckIsTime(DateTime? lastRunTime)
         {
             DateTime now = DateTime.Now;
+            var nowHourStr = now.ToString("yyyyMMddHH");
+            var nowMinuteStr = now.ToString("yyyyMMddHHmm");
+            var lastHourStr = lastRunTime != null ? lastRunTime.Value.ToString("yyyyMMddHH") : string.Empty;
+            var lastMinuteStr = lastRunTime != null ? lastRunTime.Value.ToString("yyyyMMddHHmm") : string.Empty;
+
+            if (PlanType == 5)
+            {
+                if (!lastRunTime.HasValue
+                    || (lastRunTime.HasValue
+                    && now.Subtract(lastRunTime.Value).TotalHours >= Hour
+                    && nowHourStr != lastHourStr))
+                {
+                    return true;
+                }
+            }
+
+            if (PlanType == 6)
+            {
+                if (!lastRunTime.HasValue
+                    || (lastRunTime.HasValue
+                    && now.Subtract(lastRunTime.Value).TotalMinutes >= Minute
+                    && nowMinuteStr != lastMinuteStr))
+                {
+                    return true;
+                }
+            }
 
             if (PlanType == 1)
             {
-                if (now.Hour == Hour && now.Minute == Minute)
+                if (now.Hour == Hour && now.Minute == Minute
+                    && (!lastRunTime.HasValue || (lastRunTime.HasValue && lastMinuteStr != nowMinuteStr)))
                 {
                     return true;
                 }
@@ -141,7 +186,8 @@ namespace Swift.Core
             if (PlanType == 2)
             {
                 if (now.DayOfWeek == WeekDay
-                    && now.Hour == Hour && now.Minute == Minute)
+                    && now.Hour == Hour && now.Minute == Minute
+                    && (!lastRunTime.HasValue || (lastRunTime.HasValue && lastMinuteStr != nowMinuteStr)))
                 {
                     return true;
                 }
@@ -150,7 +196,8 @@ namespace Swift.Core
             if (PlanType == 3)
             {
                 if (now.Month == Month && now.Day == Day
-                    && now.Hour == Hour && now.Minute == Minute)
+                    && now.Hour == Hour && now.Minute == Minute
+                    && (!lastRunTime.HasValue || (lastRunTime.HasValue && lastMinuteStr != nowMinuteStr)))
                 {
                     return true;
                 }
@@ -160,7 +207,8 @@ namespace Swift.Core
             {
                 if (now.Year == Year
                     && now.Month == Month && now.Day == Day
-                    && now.Hour == Hour && now.Minute == Minute)
+                    && now.Hour == Hour && now.Minute == Minute
+                    && (!lastRunTime.HasValue || (lastRunTime.HasValue && lastMinuteStr != nowMinuteStr)))
                 {
                     return true;
                 }

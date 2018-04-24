@@ -706,7 +706,7 @@ namespace Swift.Core
                         var newTask = latestTasks.Where(d => d.Job.Id == task.Job.Id && d.Id == task.Id).FirstOrDefault();
                         if (newTask == null)
                         {
-                            removeTaskList.Add(newTask);
+                            removeTaskList.Add(task);
                         }
                     }
 
@@ -727,17 +727,12 @@ namespace Swift.Core
                     {
                         LogWriter.Write(string.Format("发现待删除的任务数:{0}", removeTaskList.Count));
 
-                        var activedTasksCount = activedTasks.Count - 1;
-                        for (int i = activedTasksCount; i >= 0; i--)
+                        foreach (var removeTask in removeTaskList)
                         {
-                            var oldTask = activedTasks[i];
-                            if (removeTaskList.Where(d => d.Id == oldTask.Id).Any())
-                            {
-                                activedTasks.Remove(oldTask);
-                                OnTaskRemoveEventHandler?.Invoke(oldTask);
+                            activedTasks.Remove(removeTask);
+                            OnTaskRemoveEventHandler?.Invoke(removeTask);
 
-                                LogWriter.Write(string.Format("移除集群任务:{0},{1},{2}", oldTask.Job.Name, oldTask.Job.Id, oldTask.Id));
-                            }
+                            LogWriter.Write(string.Format("移除集群任务:{0},{1},{2}", removeTask.Job.Name, removeTask.Job.Id, removeTask.Id));
                         }
                     }
 
@@ -869,71 +864,55 @@ namespace Swift.Core
 
                 try
                 {
-                    // 从Consul查询作业的最新记录
+                    // 遍历作业配置，看看对应的作业记录
                     if (jobConfigs != null && jobConfigs.Count > 0)
                     {
                         for (int i = jobConfigs.Count - 1; i >= 0; i--)
                         {
                             var jobConfig = jobConfigs[i];
 
-                            // 如果有新的作业记录了，旧的作业记录将删除
-                            var notCurrentJobRecord = activedJobs.Where(d => d.Name == jobConfig.Name && d.Id != jobConfig.LastRecordId);
-                            if (notCurrentJobRecord.Any())
-                            {
-                                foreach (var oldJobRecord in notCurrentJobRecord)
-                                {
-                                    activedJobs.Remove(oldJobRecord);
-                                    OnJobRemoveEventHandler?.Invoke(oldJobRecord);
-                                    LogWriter.Write(string.Format("已从内存移除作业记录:{0},{1}", jobConfig.Name, oldJobRecord.Id));
-                                }
-                            }
+                            // 内存中对应的作业
+                            var currentJob = activedJobs.Where(d => d.Name == jobConfig.Name).FirstOrDefault();
 
-                            LogWriter.Write(string.Format("作业LastRecordId:{0},{1}", jobConfig.Name, jobConfig.LastRecordId));
-
+                            // 作业配置有最新的作业记录
                             if (!string.IsNullOrWhiteSpace(jobConfig.LastRecordId))
                             {
-                                var jobRecordKey = string.Format("Swift/{0}/Jobs/{1}/Records/{2}", Name, jobConfig.Name, jobConfig.LastRecordId);
-                                var jobRecordKV = ConsulKV.Get(jobRecordKey);
-                                if (jobRecordKV == null)
+                                // 如果此时内存中还没有，则直接添加到内存
+                                if (currentJob == null)
                                 {
-                                    LogWriter.Write(string.Format("作业记录不存在或者已经被删除:{0},{1}", jobConfig.Name, jobConfig.LastRecordId));
-
-                                    // 如果还在内存中，则从内存移除此记录
-                                    var memoryJob = activedJobs.Where(d => d.Id == jobConfig.LastRecordId).FirstOrDefault();
-                                    if (memoryJob != null)
+                                    try
                                     {
-                                        activedJobs.Remove(memoryJob);
-                                        OnJobRemoveEventHandler?.Invoke(memoryJob);
-                                        LogWriter.Write(string.Format("已从内存移除作业记录:{0},{1}", jobConfig.Name, memoryJob.Id));
+                                        AddActivedJobRecord(jobConfig);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        LogWriter.Write(ex.Message, Log.LogLevel.Error);
                                     }
 
                                     continue;
                                 }
 
-                                if (!activedJobs.Where(d => d.Id == jobConfig.LastRecordId).Any())
+                                // 如果内存中的作业Id不是最新的作业Id
+                                if (currentJob.Id != jobConfig.LastRecordId)
                                 {
-                                    // 内存中无此作业
-                                    var jobRecord = JobBase.Deserialize(Encoding.UTF8.GetString(jobRecordKV.Value), this);
-                                    jobRecord.ModifyIndex = jobRecordKV.ModifyIndex;
-                                    activedJobs.Add(jobRecord);
-                                    OnJobJoinEventHandler?.Invoke(jobRecord);
-                                    LogWriter.Write(string.Format("发现新作业记录:{0},{1}", jobConfig.Name, jobRecord.Id));
+                                    RemoveActivedJobRecord(currentJob);
+
+                                    try
+                                    {
+                                        AddActivedJobRecord(jobConfig);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        LogWriter.Write(ex.Message, Log.LogLevel.Error);
+                                    }
                                 }
                                 else
                                 {
-                                    // 作业有更新
-                                    var exsitJob = activedJobs.Where(d => d.Id == jobConfig.LastRecordId).FirstOrDefault();
-                                    if (exsitJob != null && exsitJob.ModifyIndex != jobRecordKV.ModifyIndex)
-                                    {
-                                        var jobRecord = JobBase.Deserialize(Encoding.UTF8.GetString(jobRecordKV.Value), this);
-                                        jobRecord.ModifyIndex = jobRecordKV.ModifyIndex;
-                                        exsitJob.UpdateFrom(jobRecord);
-
-                                        LogWriter.Write(string.Format("作业记录有更新:{0}", jobConfig.LastRecordId));
-                                    }
+                                    UpdateActivedJobRecord(currentJob, jobConfig);
                                 }
                             }
                         }
+
                     }
 
                     LogWriter.Write("结束刷新作业列表。");
@@ -945,6 +924,57 @@ namespace Swift.Core
             }
 
             isRefreshingJobs = false;
+        }
+
+        /// <summary>
+        /// 添加活动作业记录
+        /// </summary>
+        /// <param name="jobConfig">作业记录对应的作业配置</param>
+        private void AddActivedJobRecord(JobConfig jobConfig)
+        {
+            var jobRecordKey = string.Format("Swift/{0}/Jobs/{1}/Records/{2}", Name, jobConfig.Name, jobConfig.LastRecordId);
+            var jobRecordKV = ConsulKV.Get(jobRecordKey);
+            if (jobRecordKV == null || jobRecordKV.Value == null)
+            {
+                throw new Exception("Consul中作业[" + jobConfig.Name + "]的记录[" + jobConfig.LastRecordId + "]配置丢失");
+            }
+
+            var jobRecord = JobBase.Deserialize(Encoding.UTF8.GetString(jobRecordKV.Value), this);
+            jobRecord.ModifyIndex = jobRecordKV.ModifyIndex;
+            activedJobs.Add(jobRecord);
+            LogWriter.Write(string.Format("已添加新作业记录到本地内存:{0},{1}", jobConfig.Name, jobRecord.Id));
+
+            OnJobJoinEventHandler?.Invoke(jobRecord);
+        }
+
+        /// <summary>
+        /// 移除活动作业记录
+        /// </summary>
+        /// <param name="job"></param>
+        private void RemoveActivedJobRecord(JobBase job)
+        {
+            activedJobs.Remove(job);
+            LogWriter.Write(string.Format("已从内存移除作业记录:{0},{1}", job.Name, job.Id));
+            OnJobRemoveEventHandler?.Invoke(job);
+        }
+
+        /// <summary>
+        /// 更新活动作业记录
+        /// </summary>
+        /// <param name="job"></param>
+        private void UpdateActivedJobRecord(JobBase job, JobConfig jobConfig)
+        {
+            var jobRecordKey = string.Format("Swift/{0}/Jobs/{1}/Records/{2}", Name, jobConfig.Name, jobConfig.LastRecordId);
+            var jobRecordKV = ConsulKV.Get(jobRecordKey);
+
+            if (job.ModifyIndex != jobRecordKV.ModifyIndex)
+            {
+                var jobRecord = JobBase.Deserialize(Encoding.UTF8.GetString(jobRecordKV.Value), this);
+                jobRecord.ModifyIndex = jobRecordKV.ModifyIndex;
+                job.UpdateFrom(jobRecord);
+
+                LogWriter.Write(string.Format("已在本地内存更新作业记录:{0},{1}", jobConfig.Name, jobConfig.LastRecordId));
+            }
         }
         #endregion
 
@@ -983,8 +1013,10 @@ namespace Swift.Core
         /// </summary>
         public void MonitorJobConfigsFromDisk()
         {
+            // 先从Consul中获取配置，然后再从本地更新
+            RefreshJobConfigsFromConsul(null);
             jobConfigRefreshTimer = new Timer(new TimerCallback(RefreshJobConfigsFromDisk), null, 5000, ClusterConfiguration.RefreshJobConfigInterval);
-            jobCreateTimer = new Timer(new TimerCallback(TimingCreateJob), null, 10000, ClusterConfiguration.JobSpaceCreateInterval);
+            jobCreateTimer = new Timer(new TimerCallback(TimingCreateJob), null, 5000, ClusterConfiguration.JobSpaceCreateInterval);
         }
 
         /// <summary>
@@ -1047,7 +1079,7 @@ namespace Swift.Core
                         {
                             foreach (var timePlan in jobConfig.RunTimes)
                             {
-                                if (timePlan.CheckIsTime())
+                                if (timePlan.CheckIsTime(jobConfig.LastRecordStartTime))
                                 {
                                     // 如果作业没有创建，则创建作业，同时更新作业配置
                                     var job = JobBase.CreateInstance(jobConfig, this);
@@ -1178,7 +1210,7 @@ namespace Swift.Core
                             LogWriter.Write("开始更新作业配置[" + updateJobConfig.Name + "]");
 
                             // 内存中更新
-                            updateJobConfig = updateJobConfigList[i];
+                            updateJobConfig.CopyFrom(updateJobConfigList[i]);
                             LogWriter.Write("已更新内存中作业配置[" + updateJobConfig.Name + "]");
 
                             // Consul中更新
@@ -1255,13 +1287,13 @@ namespace Swift.Core
                     }
 
                     // 获取移除的JobConfig
-                    List<string> removeJobConfigList = new List<string>();
+                    List<JobConfig> removeJobConfigList = new List<JobConfig>();
                     foreach (var jobConfig in jobConfigs)
                     {
                         var newJobConfig = latestJobConfigs.Where(d => d.Name == jobConfig.Name).FirstOrDefault();
                         if (newJobConfig == null)
                         {
-                            removeJobConfigList.Add(newJobConfig.Name);
+                            removeJobConfigList.Add(jobConfig);
                         }
                     }
 
@@ -1272,14 +1304,21 @@ namespace Swift.Core
                         var latestJobConfig = latestJobConfigs.Where(d => d.Name == jobConfig.Name).FirstOrDefault();
                         if (latestJobConfig != null)
                         {
-                            if (latestJobConfig.ModifyIndex != jobConfig.ModifyIndex)
-                            {
-                                jobConfigs[i] = latestJobConfig;
-                            }
-
+                            bool isNeedUpdate = false;
                             if (latestJobConfig.Version != jobConfig.Version)
                             {
+                                isNeedUpdate = true;
+                            }
+
+                            if (latestJobConfig.ModifyIndex != jobConfig.ModifyIndex
+                                || latestJobConfig.Version != jobConfig.Version)
+                            {
                                 jobConfigs[i] = latestJobConfig;
+                                LogWriter.Write("已更新作业配置[" + latestJobConfig.Name + "]到内存");
+                            }
+
+                            if (isNeedUpdate)
+                            {
                                 OnJobConfigUpdateEventHandler?.Invoke(latestJobConfig);
                             }
                         }
@@ -1300,17 +1339,12 @@ namespace Swift.Core
                     // 移除删除的JobConfig
                     if (removeJobConfigList.Count > 0)
                     {
-                        for (int i = jobConfigs.Count - 1; i >= 0; i--)
+                        foreach (var removeJobConfig in removeJobConfigList)
                         {
-                            if (removeJobConfigList.Where(d => d == jobConfigs[i].Name).Any())
-                            {
-                                var removeJobConfig = jobConfigs[i];
+                            var mRemoveResult = jobConfigs.Remove(removeJobConfig);
+                            LogWriter.Write("内存中移除作业配置[" + removeJobConfig.Name + "]结果:" + mRemoveResult.ToString());
 
-                                var mRemoveResult = jobConfigs.Remove(removeJobConfig);
-                                LogWriter.Write("内存中移除作业配置[" + removeJobConfig.Name + "]结果:" + mRemoveResult.ToString());
-
-                                OnJobConfigRemoveEventHandler?.Invoke(removeJobConfig);
-                            }
+                            OnJobConfigRemoveEventHandler?.Invoke(removeJobConfig);
                         }
                     }
                 }
@@ -1330,18 +1364,17 @@ namespace Swift.Core
         /// <returns></returns>
         private bool TryAddJobConfig(JobConfig jobConfig)
         {
-            // TODO:Consul中可能已经存在了,这时候走更新UpdateJobConfig
-
             var jobConfigKey = string.Format("Swift/{0}/Jobs/{1}/Config", Name, jobConfig.Name);
             var configKV = ConsulKV.Get(jobConfigKey);
             if (configKV == null)
             {
                 configKV = ConsulKV.Create(jobConfigKey);
+                configKV.Value = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(jobConfig));
+                var result = ConsulKV.CAS(configKV);
+                return result;
             }
 
-            configKV.Value = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(jobConfig));
-            var result = ConsulKV.CAS(configKV);
-            return result;
+            return false;
         }
 
         /// <summary>
@@ -1459,6 +1492,7 @@ namespace Swift.Core
             if (!string.IsNullOrWhiteSpace(jobConfig.Version))
             {
                 ExtractJobConfigFile(pkgPath, jobConfigDirectory, true);
+
                 var latestJobConfig = new JobConfig(jobConfigPath);
                 latestJobConfig.LastRecordId = jobConfig.LastRecordId;
                 latestJobConfig.LastRecordStartTime = jobConfig.LastRecordStartTime;
