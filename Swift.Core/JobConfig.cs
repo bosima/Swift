@@ -120,7 +120,7 @@ namespace Swift.Core
         /// </summary>
         public void RemoveAllFile()
         {
-            string pkgPath = Path.Combine(Environment.CurrentDirectory, "Jobs", Name);
+            string pkgPath = Path.Combine(SwiftConfiguration.BaseDirectory, "Jobs", Name);
             Directory.Delete(pkgPath, true);
         }
 

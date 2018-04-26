@@ -58,7 +58,7 @@
     <Compile Include="CommunicationResponse.cs" />
     <Compile Include="Consul\ConsulKV.cs" />
     <Compile Include="Consul\ConsulService.cs" />
-    <Compile Include="ClusterConfiguration.cs" />
+    <Compile Include="SwiftConfiguration.cs" />
     <Compile Include="EnumJobStatus.cs" />
     <Compile Include="EnumMemberRole.cs" />
     <Compile Include="EnumTaskStatus.cs" />

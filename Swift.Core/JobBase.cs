@@ -97,7 +97,7 @@ namespace Swift.Core
         {
             get
             {
-                var currentDirectory = Environment.CurrentDirectory;
+                var currentDirectory = SwiftConfiguration.BaseDirectory;
                 if (currentDirectory.IndexOf("Jobs") >= 0)
                 {
                     return currentDirectory.Substring(0, currentDirectory.IndexOf("Jobs") + 4);

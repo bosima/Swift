@@ -264,7 +264,7 @@ namespace Swift.Core
         public void MonitorMember()
         {
             RefreshMembers(null);
-            memberRefreshTimer = new Timer(new TimerCallback(RefreshMembers), null, 3000, ClusterConfiguration.RefreshMemberInterval);
+            memberRefreshTimer = new Timer(new TimerCallback(RefreshMembers), null, 3000, SwiftConfiguration.RefreshMemberInterval);
         }
 
         /// <summary>
@@ -464,7 +464,7 @@ namespace Swift.Core
 
             if (member.Role == EnumMemberRole.Manager)
             {
-                var currentManager = memberList.Where(d => d.Role == EnumMemberRole.Manager && d.Status == 1).FirstOrDefault();
+                var currentManager = memberList.Where(d => d.Role == EnumMemberRole.Manager).FirstOrDefault();
                 if (currentManager != null && currentManager.Id != member.Id)
                 {
                     throw new Exception(string.Format("不能注册为Manager，已经存在:{0}", Manager.Id));
@@ -834,7 +834,7 @@ namespace Swift.Core
         /// </summary>
         public void MonitorJobs()
         {
-            jobRefreshTimer = new Timer(new TimerCallback(RefreshJob), null, 20000, ClusterConfiguration.RefreshJobInterval);
+            jobRefreshTimer = new Timer(new TimerCallback(RefreshJob), null, 20000, SwiftConfiguration.RefreshJobInterval);
         }
 
         /// <summary>
@@ -1004,7 +1004,7 @@ namespace Swift.Core
         /// </summary>
         public void MonitorJobConfigsFromConsul()
         {
-            jobConfigConsulRefreshTimer = new Timer(new TimerCallback(RefreshJobConfigsFromConsul), null, 5000, ClusterConfiguration.RefreshJobConfigInterval);
+            jobConfigConsulRefreshTimer = new Timer(new TimerCallback(RefreshJobConfigsFromConsul), null, 5000, SwiftConfiguration.RefreshJobConfigInterval);
         }
 
         /// <summary>
@@ -1015,8 +1015,8 @@ namespace Swift.Core
         {
             // 先从Consul中获取配置，然后再从本地更新
             RefreshJobConfigsFromConsul(null);
-            jobConfigRefreshTimer = new Timer(new TimerCallback(RefreshJobConfigsFromDisk), null, 5000, ClusterConfiguration.RefreshJobConfigInterval);
-            jobCreateTimer = new Timer(new TimerCallback(TimingCreateJob), null, 5000, ClusterConfiguration.JobSpaceCreateInterval);
+            jobConfigRefreshTimer = new Timer(new TimerCallback(RefreshJobConfigsFromDisk), null, 5000, SwiftConfiguration.RefreshJobConfigInterval);
+            jobCreateTimer = new Timer(new TimerCallback(TimingCreateJob), null, 5000, SwiftConfiguration.JobSpaceCreateInterval);
         }
 
         /// <summary>
@@ -1105,7 +1105,7 @@ namespace Swift.Core
                                         ConsulKV.CAS(jobConfigKV);
 
                                         // 更新本地作业配置
-                                        var jobConfigLocalPath = Path.Combine(Environment.CurrentDirectory, "Jobs", jobConfig.Name, "config", "job.json");
+                                        var jobConfigLocalPath = Path.Combine(SwiftConfiguration.BaseDirectory, "Jobs", jobConfig.Name, "config", "job.json");
                                         File.WriteAllText(jobConfigLocalPath, jobConfigJson);
 
                                         LogWriter.Write(string.Format("已更新作业配置:{0}", jobConfig.Name));
@@ -1434,7 +1434,7 @@ namespace Swift.Core
         {
             List<JobConfig> latestJobConfigs = new List<JobConfig>();
 
-            var jobRootPath = Path.Combine(Environment.CurrentDirectory, "Jobs");
+            var jobRootPath = Path.Combine(SwiftConfiguration.BaseDirectory, "Jobs");
             if (!Directory.Exists(jobRootPath))
             {
                 LogWriter.Write(string.Format("作业包目录为空，不能再轻松了。"));
@@ -1465,7 +1465,7 @@ namespace Swift.Core
             var pkgVersion = pkgUpdateTime.ToString("yyyyMMddHHmmss");
 
             // 作业根目录
-            var jobRootPath = Path.Combine(Environment.CurrentDirectory, "Jobs");
+            var jobRootPath = Path.Combine(SwiftConfiguration.BaseDirectory, "Jobs");
 
             // 作业名称
             int fileNameStartIndex = pkgPath.LastIndexOf(Path.DirectorySeparatorChar) + 1;

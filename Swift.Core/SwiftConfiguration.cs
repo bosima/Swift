@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace Swift.Core
 {
-    public class ClusterConfiguration
+    public class SwiftConfiguration
     {
         /// <summary>
         /// 刷新集群成员间隔时间，单位毫秒
@@ -27,7 +27,7 @@ namespace Swift.Core
         {
             get
             {
-                return 15000;
+                return 10000;
             }
         }
 
@@ -38,7 +38,7 @@ namespace Swift.Core
         {
             get
             {
-                return 20000;
+                return 15000;
             }
         }
 
@@ -49,7 +49,18 @@ namespace Swift.Core
         {
             get
             {
-                return 10000;
+                return 8000;
+            }
+        }
+
+        /// <summary>
+        /// 当前Swift的根路径
+        /// </summary>
+        public static string BaseDirectory
+        {
+            get
+            {
+                return System.AppDomain.CurrentDomain.SetupInformation.ApplicationBase;
             }
         }
     }

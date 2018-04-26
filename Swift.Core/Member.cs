@@ -212,7 +212,7 @@ namespace Swift.Core
         /// <param name="data"></param>
         private void SaveDownloadFile(string fileName, byte[] data)
         {
-            var fileDirectory = Path.Combine(Environment.CurrentDirectory, fileName.Substring(0, fileName.LastIndexOf('/')));
+            var fileDirectory = Path.Combine(SwiftConfiguration.BaseDirectory, fileName.Substring(0, fileName.LastIndexOf('/')));
             if (!Directory.Exists(fileDirectory))
             {
                 Directory.CreateDirectory(fileDirectory);
@@ -289,7 +289,7 @@ namespace Swift.Core
 
             fileName = HttpUtility.UrlDecode(fileName);
 
-            string filePath = Path.Combine(Environment.CurrentDirectory, fileName.Replace('/', Path.DirectorySeparatorChar));
+            string filePath = Path.Combine(SwiftConfiguration.BaseDirectory, fileName.Replace('/', Path.DirectorySeparatorChar));
             LogWriter.Write(string.Format("处理下载请求:{0}", filePath));
 
             return File.ReadAllBytes(filePath);
