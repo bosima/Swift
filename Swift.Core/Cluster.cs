@@ -915,6 +915,17 @@ namespace Swift.Core
 
                     }
 
+                    // 去掉已经从Consul中移除的作业
+                    for (int i = activedJobs.Count - 1; i >= 0; i--)
+                    {
+                        var job = activedJobs[i];
+                        if (!jobConfigs.Where(d => d.Name == job.Name).Any())
+                        {
+                            activedJobs.Remove(job);
+                            LogWriter.Write(string.Format("已从内存移除作业:{0},{1}", job.Name, job.Id));
+                        }
+                    }
+
                     LogWriter.Write("结束刷新作业列表。");
                 }
                 catch (Exception ex)
@@ -1097,6 +1108,12 @@ namespace Swift.Core
                                         // 更新Consul作业配置
                                         var jobConfigKey = string.Format("Swift/{0}/Jobs/{1}/Config", Name, jobConfig.Name);
                                         var jobConfigKV = ConsulKV.Get(jobConfigKey);
+                                        if (jobConfigKV == null)
+                                        {
+                                            // 可能Consul中找不到了
+                                            jobConfigKV = ConsulKV.Create(jobConfigKey);
+                                        }
+
                                         jobConfig.LastRecordId = job.Id;
                                         jobConfig.LastRecordStartTime = DateTime.Now;
                                         jobConfig.ModifyIndex = jobConfigKV.ModifyIndex;
