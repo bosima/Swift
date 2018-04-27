@@ -24,6 +24,8 @@ namespace Swift.Core
                 FileName = job.FileName;
                 JobClassName = job.JobClassName;
                 Status = job.Status;
+                Version = job.Version;
+                ModifyIndex = job.ModifyIndex;
             }
         }
 

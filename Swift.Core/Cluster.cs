@@ -790,6 +790,7 @@ namespace Swift.Core
 
             var jobRecordJson = Encoding.UTF8.GetString(jobRecordKV.Value);
             var jobRecord = JobBase.Deserialize(jobRecordJson, this);
+            job.ModifyIndex = jobRecord.ModifyIndex;
             if (jobRecord != null)
             {
                 if (jobRecord.Status == EnumJobRecordStatus.Pending || jobRecord.Status == EnumJobRecordStatus.PlanMaking)
@@ -982,9 +983,14 @@ namespace Swift.Core
             {
                 var jobRecord = JobBase.Deserialize(Encoding.UTF8.GetString(jobRecordKV.Value), this);
                 jobRecord.ModifyIndex = jobRecordKV.ModifyIndex;
-                job.UpdateFrom(jobRecord);
 
-                LogWriter.Write(string.Format("已在本地内存更新作业记录:{0},{1}", jobConfig.Name, jobConfig.LastRecordId));
+                // 本地的ModifyIndex小于从Consul获取的ModifyIndex才更新，避免本地未提交的处理被覆盖
+                LogWriter.Write(string.Format("作业[{0}]本地与Consul的ModifyIndex:{1},{2}", jobConfig.Name, job.ModifyIndex, jobRecord.ModifyIndex), Log.LogLevel.Trace);
+                if (job.ModifyIndex < jobRecord.ModifyIndex)
+                {
+                    job.UpdateFrom(jobRecord);
+                    LogWriter.Write(string.Format("已在本地内存更新作业记录:{0},{1}", jobConfig.Name, jobConfig.LastRecordId));
+                }
             }
         }
         #endregion

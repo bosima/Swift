@@ -218,7 +218,8 @@ namespace Swift.Core
                 Directory.CreateDirectory(fileDirectory);
             }
 
-            File.WriteAllBytes(fileName, data);
+            var filePath = Path.Combine(fileDirectory, fileName.Substring(fileName.LastIndexOf('/') + 1));
+            File.WriteAllBytes(filePath, data);
         }
         #endregion
 

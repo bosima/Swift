@@ -236,7 +236,7 @@ namespace Swift.Core
         }
 
         #region 制定作业计划
-     
+
         public void CreateProductionPlan()
         {
             LogWriter.Write(string.Format("开始创建作业计划：{0},{1}", Name, Id));
@@ -829,7 +829,10 @@ namespace Swift.Core
 
             if (taskPlan != null && taskPlan.Count > 0)
             {
-                var executeCompleteTasks = taskPlan.SelectMany(d => d.Value.Where(t => t.Status == EnumTaskStatus.Completed));
+                var executeCompleteTasks = taskPlan.SelectMany(d => d.Value
+                .Where(t => t.Status == EnumTaskStatus.Completed
+                || t.Status == EnumTaskStatus.SyncFailed));
+
                 if (executeCompleteTasks.Any())
                 {
                     foreach (var task in executeCompleteTasks)

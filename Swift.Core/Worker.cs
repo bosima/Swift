@@ -116,6 +116,8 @@ namespace Swift.Core
                     continue;
                 }
 
+                // TODO:处理作业的时候要不要锁住作业刷新，刷新出来的数据和处理后的数据可能不一致
+
                 // 遍历已经制定计划完毕的作业，准备处理任务
                 List<Task> jobList = new List<Task>();
                 foreach (var job in taskPlanCompletedJobs)
@@ -137,7 +139,8 @@ namespace Swift.Core
                             List<Task> taskList = new List<Task>();
                             foreach (var task in tasks)
                             {
-                                if (task.Status == 0) // 未处理的任务
+                                // TODO:任务处理超时机制
+                                if (task.Status == EnumTaskStatus.Pending) // 未处理的任务
                                 {
                                     LogWriter.Write(string.Format("发现未处理任务:{0},{1},{2}", job.Name, job.Id, task.Id));
 
