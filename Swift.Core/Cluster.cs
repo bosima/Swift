@@ -76,7 +76,6 @@ namespace Swift.Core
         private List<Member> members;
         private List<JobBase> activedJobs;
         private List<JobConfig> jobConfigs;
-        private List<JobTask> activedTasks;
         private Member currentMember;
         private object refreshLocker = new object();
 
@@ -117,16 +116,6 @@ namespace Swift.Core
         /// Manager可以订阅此事件，然后通知其它成员删除作业
         /// </summary>
         public event JobConfigRemoveEvent OnJobConfigRemoveEventHandler;
-
-        /// <summary>
-        /// 任务加入事件
-        /// </summary>
-        public event TaskJoinEvent OnTaskJoinEventHandler;
-
-        /// <summary>
-        /// 任务移除事件
-        /// </summary>
-        public event TaskRemoveEvent OnTaskRemoveEventHandler;
 
         /// <summary>
         /// 成员加入事件
@@ -240,11 +229,9 @@ namespace Swift.Core
 
             jobConfigs = new List<JobConfig>();
             activedJobs = new List<JobBase>();
-            activedTasks = new List<JobTask>();
 
             MonitorMember();
             MonitorJobs();
-            MonitorTask();
         }
 
         #region 成员
@@ -635,190 +622,6 @@ namespace Swift.Core
         }
         #endregion
 
-        #region 任务
-        /// <summary>
-        /// 任务刷新定时器
-        /// </summary>
-        private Timer taskRefreshTimer;
-
-        /// <summary>
-        /// 指示是否正在刷新任务
-        /// </summary>
-        private bool isRefreshingTasks = false;
-
-        /// <summary>
-        /// 监控任务变化
-        /// </summary>
-        public void MonitorTask()
-        {
-            taskRefreshTimer = new Timer(new TimerCallback(RefreshTasks), null, 20000, 10000);
-        }
-
-        /// <summary>
-        /// 停止监控任务变化
-        /// </summary>
-        public void StopMonitorTask()
-        {
-            taskRefreshTimer.Dispose();
-        }
-
-        /// <summary>
-        /// 刷新任务
-        /// </summary>
-        public void RefreshTasks(object state)
-        {
-            // 如果任务刷新需要的时间超过任务刷新间隔时间，则跳过新的刷新
-            if (isRefreshingTasks)
-            {
-                return;
-            }
-
-            isRefreshingTasks = true;
-
-            lock (refreshLocker)
-            {
-                LogWriter.Write("开始刷新任务列表...");
-
-                try
-                {
-                    var latestTasks = LoadTasks();
-
-                    if (activedTasks == null)
-                    {
-                        activedTasks = new List<JobTask>();
-                    }
-
-                    // 获取新增的Task
-                    List<JobTask> newTaskList = new List<JobTask>();
-                    foreach (var task in latestTasks)
-                    {
-                        var oldTask = activedTasks.Where(d => d.Job.Id == task.Job.Id && d.Id == task.Id).FirstOrDefault();
-                        if (oldTask == null)
-                        {
-                            newTaskList.Add(task);
-                        }
-                    }
-
-                    // 获取移除的Task
-                    List<JobTask> removeTaskList = new List<JobTask>();
-                    foreach (var task in activedTasks)
-                    {
-                        var newTask = latestTasks.Where(d => d.Job.Id == task.Job.Id && d.Id == task.Id).FirstOrDefault();
-                        if (newTask == null)
-                        {
-                            removeTaskList.Add(task);
-                        }
-                    }
-
-                    // 添加新任务
-                    if (newTaskList.Count > 0)
-                    {
-                        foreach (var newTask in newTaskList)
-                        {
-                            activedTasks.Add(newTask);
-                            OnTaskJoinEventHandler?.Invoke(newTask);
-
-                            LogWriter.Write(string.Format("发现集群任务:{0},{1},{2}", newTask.Job.Name, newTask.Job.Id, newTask.Id));
-                        }
-                    }
-
-                    // 移除删除的任务
-                    if (removeTaskList.Count > 0)
-                    {
-                        LogWriter.Write(string.Format("发现待删除的任务数:{0}", removeTaskList.Count));
-
-                        foreach (var removeTask in removeTaskList)
-                        {
-                            activedTasks.Remove(removeTask);
-                            OnTaskRemoveEventHandler?.Invoke(removeTask);
-
-                            LogWriter.Write(string.Format("移除集群任务:{0},{1},{2}", removeTask.Job.Name, removeTask.Job.Id, removeTask.Id));
-                        }
-                    }
-
-                    LogWriter.Write("结束刷新任务列表。");
-                }
-                catch (Exception ex)
-                {
-                    LogWriter.Write(string.Format("刷新任务异常:{0}", ex.Message), ex);
-                }
-            }
-
-            isRefreshingTasks = false;
-        }
-
-        /// <summary>
-        /// 加载所有任务
-        /// </summary>
-        public List<JobTask> LoadTasks()
-        {
-            List<JobTask> taskList = new List<JobTask>();
-
-            if (activedJobs == null || activedJobs.Count <= 0)
-            {
-                return taskList;
-            }
-
-            foreach (var job in activedJobs)
-            {
-                var tasks = LoadTasks(job);
-                if (tasks != null)
-                {
-                    taskList.AddRange(tasks);
-                }
-            }
-
-            return taskList;
-        }
-
-        /// <summary>
-        /// 加载指定作业的任务
-        /// </summary>
-        /// <param name="job"></param>
-        /// <returns></returns>
-        public List<JobTask> LoadTasks(JobBase job)
-        {
-            List<JobTask> taskList = new List<JobTask>();
-
-            var jobRecordKey = string.Format("Swift/{0}/Jobs/{1}/Records/{2}", Name, job.Name, job.Id);
-            var jobRecordKV = ConsulKV.Get(jobRecordKey);
-            if (jobRecordKV == null)
-            {
-                LogWriter.Write(string.Format("作业丢失:{0},{1}", job.Name, job.Id));
-                return null;
-            }
-
-            var jobRecordJson = Encoding.UTF8.GetString(jobRecordKV.Value);
-            var jobRecord = JobBase.Deserialize(jobRecordJson, this);
-            job.ModifyIndex = jobRecord.ModifyIndex;
-            if (jobRecord != null)
-            {
-                if (jobRecord.Status == EnumJobRecordStatus.Pending || jobRecord.Status == EnumJobRecordStatus.PlanMaking)
-                {
-                    return null;
-                }
-
-                if (jobRecord.TaskPlan != null && jobRecord.TaskPlan.Count > 0)
-                {
-                    foreach (var key in jobRecord.TaskPlan.Keys)
-                    {
-                        var taskPlan = jobRecord.TaskPlan[key];
-                        if (taskPlan != null && taskPlan.Any())
-                        {
-                            foreach (var task in taskPlan)
-                            {
-                                task.Job = jobRecord;
-                                taskList.Add(task);
-                            }
-                        }
-                    }
-                }
-            }
-
-            return taskList;
-        }
-        #endregion
-
         #region 作业
         /// <summary>
         /// 作业刷新定时器
@@ -988,8 +791,8 @@ namespace Swift.Core
                 LogWriter.Write(string.Format("作业[{0}]本地与Consul的ModifyIndex:{1},{2}", jobConfig.Name, job.ModifyIndex, jobRecord.ModifyIndex), Log.LogLevel.Trace);
                 if (job.ModifyIndex < jobRecord.ModifyIndex)
                 {
-                    job.UpdateFrom(jobRecord);
-                    LogWriter.Write(string.Format("已在本地内存更新作业记录:{0},{1}", jobConfig.Name, jobConfig.LastRecordId));
+                    job.UpdateFromConsul(jobRecord);
+                    LogWriter.Write(string.Format("已在本地内存更新作业记录:{0},{1},{2}", jobConfig.Name, jobConfig.LastRecordId, job.ModifyIndex));
                 }
             }
         }

@@ -217,10 +217,10 @@ namespace Swift.Core
         }
 
         /// <summary>
-        /// 从其他作业类更新
+        /// 从Consul配置更新
         /// </summary>
         /// <param name="job"></param>
-        public void UpdateFrom(JobBase job)
+        public void UpdateFromConsul(JobBase job)
         {
             Id = job.Id;
             Name = job.Name;
@@ -229,10 +229,34 @@ namespace Swift.Core
             Status = job.Status;
             ModifyIndex = job.ModifyIndex;
             CreateTime = job.CreateTime;
-            TaskPlan = job.TaskPlan;
-            Cluster = job.Cluster;
             FileBytes = job.FileBytes;
             Version = job.Version;
+
+            if (job.Cluster != null)
+            {
+                Cluster = job.Cluster;
+            }
+
+            if (TaskPlan == null || TaskPlan.Count <= 0)
+            {
+                TaskPlan = job.TaskPlan;
+            }
+            else
+            {
+                if (job.TaskPlan != null && job.TaskPlan.Count > 0)
+                {
+                    var remoteTasks = job.TaskPlan.SelectMany(d => d.Value);
+                    var localTasks = TaskPlan.SelectMany(d => d.Value);
+                    foreach (var task in remoteTasks)
+                    {
+                        var t = localTasks.Where(d => d.Id == task.Id).FirstOrDefault();
+                        if (t != null)
+                        {
+                            t.Status = task.Status;
+                        }
+                    }
+                }
+            }
         }
 
         #region 制定作业计划
@@ -1134,16 +1158,42 @@ namespace Swift.Core
         /// <param name="status"></param>
         private void UpdateJobStatus(EnumJobRecordStatus status)
         {
-            Status = status;
-
             // 可能同时更新作业记录配置，所以这里用CAS
             KVPair jobRecordKV;
+            int updateIndex = 0;
+
             do
             {
+                updateIndex++;
+                Log.LogWriter.Write("UpdateJobStatus Execute Index:" + updateIndex, Log.LogLevel.Info);
+
+                Thread.Sleep(200);
+
                 var jobRecordKey = string.Format("Swift/{0}/Jobs/{1}/Records/{2}", Cluster.Name, Name, Id);
                 jobRecordKV = ConsulKV.Get(jobRecordKey);
-                var jobRecord = JsonConvert.DeserializeObject<JobWrapper>(Encoding.UTF8.GetString(jobRecordKV.Value));
-                jobRecordKV.Value = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(this));
+
+                var jobRecordJson = Encoding.UTF8.GetString(jobRecordKV.Value);
+                Log.LogWriter.Write("UpdateJobStatus Get Value[" + jobRecordKV.ModifyIndex + "]" + jobRecordJson, Log.LogLevel.Trace);
+
+                var jobRecord = JsonConvert.DeserializeObject<JobWrapper>(jobRecordJson);
+                if (jobRecord == null)
+                {
+                    Log.LogWriter.Write(string.Format("更新作业状态时找不到作业是什么鬼？{0}", jobRecordKey), Log.LogLevel.Error);
+                    break;
+                }
+
+                jobRecord.ModifyIndex = jobRecordKV.ModifyIndex;
+                jobRecord.Status = status;
+                if (status == EnumJobRecordStatus.PlanMaked)
+                {
+                    jobRecord.TaskPlan = this.TaskPlan;
+                }
+                this.UpdateFromConsul(jobRecord);
+
+                jobRecordJson = JsonConvert.SerializeObject(jobRecord);
+                Log.LogWriter.Write("UpdateTaskStatus CAS Value[" + jobRecordKV.ModifyIndex + "]" + jobRecordJson, Log.LogLevel.Trace);
+
+                jobRecordKV.Value = Encoding.UTF8.GetBytes(jobRecordJson);
             } while (!ConsulKV.CAS(jobRecordKV));
         }
 
@@ -1171,6 +1221,8 @@ namespace Swift.Core
                     var taskJsonPath = Path.Combine(taskDir, "task.json");
                     var taskJson = File.ReadAllText(taskJsonPath);
                     var task = JsonConvert.DeserializeObject<JobTask>(taskJson);
+                    task.Job = (JobWrapper)this;
+
                     taskList.Add(task);
                 }
             }

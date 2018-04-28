@@ -73,6 +73,7 @@ namespace Swift.Core
             t.TaskPlan = this.TaskPlan;
             t.CreateTime = this.CreateTime;
             t.ModifyIndex = this.ModifyIndex;
+            t.Version = this.Version;
             return t;
         }
     }

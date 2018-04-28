@@ -120,8 +120,6 @@ namespace Swift.Core
         /// <param name="status"></param>
         public void UpdateTaskStatus(EnumTaskStatus status)
         {
-            Status = status;
-
             var jobRecordKey = string.Format("Swift/{0}/Jobs/{1}/Records/{2}", Job.Cluster.Name, Job.Name, Job.Id);
             KVPair jobRecordKV;
             int updateIndex = 0;
@@ -131,7 +129,7 @@ namespace Swift.Core
                 updateIndex++;
                 Log.LogWriter.Write("UpdateTaskStatus Execute Index:" + updateIndex, Log.LogLevel.Info);
 
-                Thread.Sleep(1000);
+                Thread.Sleep(200);
 
                 jobRecordKV = ConsulKV.Get(jobRecordKey);
                 if (jobRecordKV == null)
@@ -141,11 +139,10 @@ namespace Swift.Core
                 }
 
                 var jobRecordJson = Encoding.UTF8.GetString(jobRecordKV.Value);
-                var jobRecord = JobBase.Deserialize(jobRecordJson, Job.Cluster);
-
-                // TODO:定义个方法，专门更新本地配置
-                Job.ModifyIndex = jobRecord.ModifyIndex;
                 Log.LogWriter.Write("UpdateTaskStatus Get Value[" + jobRecordKV.ModifyIndex + "]" + jobRecordJson, Log.LogLevel.Trace);
+
+                var jobRecord = JobBase.Deserialize(jobRecordJson, Job.Cluster);
+                jobRecord.ModifyIndex = jobRecordKV.ModifyIndex;
 
                 var consulTask = jobRecord.TaskPlan.SelectMany(d => d.Value.Where(t => t.Id == Id)).FirstOrDefault();
                 if (consulTask == null)
@@ -154,12 +151,12 @@ namespace Swift.Core
                     break;
                 }
                 consulTask.Status = status;
+                Job.UpdateFromConsul(jobRecord);
 
                 jobRecordJson = JsonConvert.SerializeObject(jobRecord);
-                jobRecordKV.Value = Encoding.UTF8.GetBytes(jobRecordJson);
-
                 Log.LogWriter.Write("UpdateTaskStatus CAS Value[" + jobRecordKV.ModifyIndex + "]" + jobRecordJson, Log.LogLevel.Trace);
 
+                jobRecordKV.Value = Encoding.UTF8.GetBytes(jobRecordJson);
             } while (!ConsulKV.CAS(jobRecordKV));
         }
 
