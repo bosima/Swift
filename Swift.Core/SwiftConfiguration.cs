@@ -10,13 +10,24 @@ namespace Swift.Core
     public class SwiftConfiguration
     {
         /// <summary>
-        /// 刷新集群成员间隔时间，单位毫秒
+        /// 刷新集群成员信息到本地间隔时间，单位毫秒
         /// </summary>
         public static int RefreshMemberInterval
         {
             get
             {
                 return 5000;
+            }
+        }
+
+        /// <summary>
+        /// 检查集群成员健康状态间隔时间，单位毫秒
+        /// </summary>
+        public static int CheckMemberInterval
+        {
+            get
+            {
+                return 8000;
             }
         }
 
@@ -49,7 +60,7 @@ namespace Swift.Core
         {
             get
             {
-                return 8000;
+                return 9000;
             }
         }
 
@@ -60,8 +71,18 @@ namespace Swift.Core
         {
             get
             {
-                return System.AppDomain.CurrentDomain.SetupInformation.ApplicationBase;
+                return System.AppDomain.CurrentDomain.BaseDirectory;
             }
+        }
+
+        /// <summary>
+        /// 获取文件操作锁的名称
+        /// </summary>
+        /// <returns>The file operate lock name.</returns>
+        /// <param name="filePath">File path.</param>
+        public static string GetFileOperateLockName(string filePath)
+        {
+            return "file:" + filePath;
         }
     }
 }

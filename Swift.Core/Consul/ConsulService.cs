@@ -1,8 +1,10 @@
 ﻿using Consul;
+using Swift.Core.Log;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Swift.Core.Consul
@@ -10,35 +12,34 @@ namespace Swift.Core.Consul
     /// <summary>
     /// Consul服务管理相关
     /// </summary>
-    public class ConsulService
+    public static class ConsulService
     {
         /// <summary>
-        /// 检查服务健康状态
+        /// 获取服务所有节点的健康状态
         /// </summary>
-        /// <param name="serviceId"></param>
-        /// <returns></returns>
-        public static bool CheckHealth(string serviceId)
+        /// <returns>The healths.</returns>
+        /// <param name="serviceName">Service name.</param>
+        public static Dictionary<string,bool> GetHealths(string serviceName)
         {
-            var hasHealth = false;
+            Dictionary<string, bool> healths = new Dictionary<string, bool>();
+
             using (var client = new ConsulClient())
             {
-                var serviceEntry = client.Health.Service(serviceId).Result;
-
-                if (serviceEntry.Response != null && serviceEntry.Response.Length > 0)
+                var checks = client.Health.Checks(serviceName).Result;
+                
+                if (checks.Response != null || checks.Response.Length > 0)
                 {
-                    Array.ForEach(serviceEntry.Response, c1 =>
-                   {
-                       // 只要有一个检测不通过，就是不能用
-                       var checkPass = c1.Checks.Any(c => c.Status != HealthStatus.Passing);
-                       if (!checkPass)
-                       {
-                           hasHealth = true;
-                       }
-                   });
+                    var serviceCheckGroup = checks.Response.GroupBy(d => d.ServiceID);
+                    foreach(var serviceChecks in serviceCheckGroup)
+                    {
+                        var serviceId = serviceChecks.Key;
+                        var serviceStatus = !serviceChecks.Any(d => d.Status != HealthStatus.Passing);
+                        healths.Add(serviceId, serviceStatus);
+                    }
                 }
             }
 
-            return hasHealth;
+            return healths;
         }
 
         /// <summary>
@@ -49,7 +50,7 @@ namespace Swift.Core.Consul
         {
             using (var client = new ConsulClient())
             {
-                var checkId = "CHECK-" + serviceId;
+                var checkId = "CHECK:" + serviceId;
                 client.Agent.PassTTL(checkId, "Alive").Wait();
             }
         }
@@ -92,11 +93,10 @@ namespace Swift.Core.Consul
         }
 
         /// <summary>
-        /// 注册服务，使用此方法注册的服务需要定时UpdateTTL
+        /// 注册服务，使用此方法注册的服务需要定时Pass TTL
         /// </summary>
         /// <param name="serviceId"></param>
         /// <param name="serviceName"></param>
-        /// <param name="serviceAddress"></param>
         /// <param name="ttl"></param>
         /// <returns></returns>
         public static void RegisterService(string serviceId, string serviceName, int ttl)
@@ -106,35 +106,53 @@ namespace Swift.Core.Consul
                 var deRegResult = client.Agent.ServiceDeregister(serviceId).Result;
                 if (deRegResult.StatusCode != System.Net.HttpStatusCode.OK)
                 {
-                    throw new Exception("注册前的注销失败，返回值：" + deRegResult.StatusCode);
+                    throw new Exception("Swift Member注册前注销服务失败，返回值：" + deRegResult.StatusCode);
                 }
 
-                var registion = new AgentServiceRegistration()
+                var regResult = client.Agent.ServiceRegister(new AgentServiceRegistration()
                 {
                     ID = serviceId,
-                    Name = serviceName,
-                };
-
-                var regResult = client.Agent.ServiceRegister(registion).Result;
+                    Name = serviceName
+                }).Result;
                 if (regResult.StatusCode != System.Net.HttpStatusCode.OK)
                 {
-                    throw new Exception("注册失败，返回值：" + regResult.StatusCode);
+                    throw new Exception("Swift Member注册失败，返回值：" + regResult.StatusCode);
                 }
 
-                var check = new AgentCheckRegistration()
+                var regCheckResult = client.Agent.CheckRegister(new AgentCheckRegistration()
                 {
-                    ID = "CHECK-" + serviceId,
-                    Name = "CHECK " + serviceName,
-                    TTL = new TimeSpan(0, 0, ttl),
-                    DeregisterCriticalServiceAfter = new TimeSpan(1, 0, 0),
-                    Notes = "服务 " + serviceName + " 健康监测",
-                };
+                    ID = "CHECK:" + serviceId,
+                    Name = "CHECK " + serviceId,
+                    DeregisterCriticalServiceAfter = new TimeSpan(0, 30, 0),
+                    Notes = "服务 " + serviceId + " 健康监测",
+                    ServiceID = serviceId,
+                    Status = HealthStatus.Warning,
+                    TTL = new TimeSpan(0, 0, ttl)
+                }).Result;
 
-                var regCheckResult = client.Agent.CheckRegister(check).Result;
                 if (regCheckResult.StatusCode != System.Net.HttpStatusCode.OK)
                 {
-                    throw new Exception("注册健康检查失败，返回值：" + regCheckResult.StatusCode);
+                    throw new Exception("Swift Member健康检查注册失败，返回值：" + regCheckResult.StatusCode);
                 }
+
+                var ttlPassThread = new Thread(new ThreadStart(() =>
+                {
+                    while (true)
+                    {
+                        try
+                        {
+                            PassTTL(serviceId);
+                            Thread.Sleep(4000);
+                        }
+                        catch (Exception ex)
+                        {
+                            LogWriter.Write(string.Format("Consul PassTTL异常:{0}", ex.Message + ex.StackTrace));
+                            Thread.Sleep(1000);
+                        }
+                    }
+                }));
+
+                ttlPassThread.Start();
             }
         }
     }

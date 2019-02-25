@@ -1,16 +1,11 @@
-﻿using Newtonsoft.Json;
-using Swift.Core.Log;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
+using Swift.Core.Log;
 
 namespace Swift.Core
 {
     /// <summary>
-    /// 经理
+    /// 管理员
     /// </summary>
     public class Manager : Member
     {
@@ -45,28 +40,31 @@ namespace Swift.Core
         {
             while (true)
             {
-                var jobs = Cluster.Jobs;
-                if (jobs.Count <= 0)
+                var jobs = Cluster.GetCurrentJobs();
+                if (jobs.Length <= 0)
                 {
                     LogWriter.Write("没有作业真高兴...");
                     Thread.Sleep(5000);
                     continue;
                 }
 
-                if (Cluster.Workers == null || !Cluster.Workers.Where(d => d.Status == 1).Any())
+                var workers = Cluster.GetCurrentWorkers();
+                if (workers == null || !workers.Any(d => d.Status == 1))
                 {
-                    LogWriter.Write("我是个光杆司令，不想干活...");
-                    Thread.Sleep(9000);
+                    LogWriter.Write("没有在线的工人，光杆司令没法干活...");
+                    Thread.Sleep(5000);
                     continue;
                 }
 
-                // 尚未开始的作业
-                var needProcessJobs = jobs.Where(d => d.Status == EnumJobRecordStatus.Pending);
-                if (needProcessJobs.Any())
+                // 需要开始处理的作业:待处理、计划指定失败、正在制定计划（不应该存在这种状态，除非异常中断）
+                var needStartJobs = jobs.Where(d => d.Status == EnumJobRecordStatus.Pending
+                || d.Status == EnumJobRecordStatus.PlanFailed
+                || d.Status == EnumJobRecordStatus.PlanMaking);
+                if (needStartJobs.Any())
                 {
-                    foreach (var needProcessJob in needProcessJobs)
+                    foreach (var needStartJob in needStartJobs)
                     {
-                        needProcessJob.CreateProductionPlan();
+                        needStartJob.CreateProductionPlan();
                     }
                 }
 
@@ -90,6 +88,8 @@ namespace Swift.Core
                     }
                 }
 
+                // TODO:处理已经不存在的节点，重新分配任务;是否给新增的节点加点任务？
+
                 // 合并任务同步完成的作业
                 var taskSyncedJobs = jobs.Where(d => d.Status == EnumJobRecordStatus.TaskSynced);
                 if (taskSyncedJobs.Any())
@@ -111,8 +111,12 @@ namespace Swift.Core
         {
             LogWriter.Write("Manager开始干活了...");
 
+            Cluster.MonitorMembers();
+            Cluster.MonitorMembersHealth();
             Cluster.MonitorJobConfigsFromDisk();
-            Cluster.MonitorJobs();
+            Cluster.MonitorJobConfigsFromConsul();
+            //Cluster.MonitorJobs();
+            Cluster.MonitorJobCreate();
             StartProcessJobs();
         }
 

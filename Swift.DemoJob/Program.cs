@@ -12,6 +12,8 @@ namespace Swift.DemoJob
     {
         static void Main(string[] args)
         {
+            // todo:将这个文件打包为可执行文件，其中使用反射访问用户编写的作业代码，用户只需要专心写业务代码，然后编译，和这个可执行文件打包到一起
+
             var paras = ResolveArguments(args);
 
             // 分割作业为不同的任务
@@ -74,7 +76,7 @@ namespace Swift.DemoJob
 
             for (int i = 0; i < args.Length; i++)
             {
-                if (!args[i].StartsWith("-"))
+                if (!args[i].StartsWith("-", StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -89,7 +91,7 @@ namespace Swift.DemoJob
                 var val = string.Empty;
                 if (i + 1 < args.Length)
                 {
-                    if (!args[i + 1].StartsWith("-"))
+                    if (!args[i + 1].StartsWith("-", StringComparison.Ordinal))
                     {
                         val = args[i + 1].Trim();
                         i = i + 1;

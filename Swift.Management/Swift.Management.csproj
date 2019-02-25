@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp2.1</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Swift.Core\Swift.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Remove="Views\Shared\_CookieConsentPartial.cshtml" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Remove="Dockerfile" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Swift\" />
+  </ItemGroup>
+</Project>

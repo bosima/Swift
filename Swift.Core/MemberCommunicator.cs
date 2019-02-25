@@ -22,7 +22,7 @@ namespace Swift.Core
     /// </summary>
     /// <param name="msgType"></param>
     /// <param name="data"></param>
-    public delegate void DownloadDataCompletedEvent(string msgType, Dictionary<string, string> paras, byte[] data);
+    public delegate void ReceiveWebResponseEvent(string msgType, Dictionary<string, string> paras, byte[] data);
 
     /// <summary>
     /// 成员通信器
@@ -40,9 +40,9 @@ namespace Swift.Core
         public event ReceiveWebRequestEvent OnReceiveWebRequestHandler;
 
         /// <summary>
-        /// 当数据下载完毕处理时的事件
+        /// 当接收到Web响应时的处理器
         /// </summary>
-        public event DownloadDataCompletedEvent OnDownloadDataCompletedHandler;
+        public event ReceiveWebResponseEvent OnReceiveWebResponseHandler;
 
         /// <summary>
         /// 获取通信Url
@@ -125,7 +125,7 @@ namespace Swift.Core
             WebClient client = new WebClient();
             var result = client.DownloadData(url);
 
-            OnDownloadDataCompletedHandler?.Invoke(msgType, paras, result);
+            OnReceiveWebResponseHandler?.Invoke(msgType, paras, result);
         }
 
         /// <summary>

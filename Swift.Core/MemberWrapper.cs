@@ -43,7 +43,7 @@ namespace Swift.Core
         }
 
         /// <summary>
-        /// 转换为JobBase的某个具体子类的实例
+        /// 转换为Member的某个具体子类的实例
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <returns></returns>

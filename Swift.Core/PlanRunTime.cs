@@ -22,14 +22,14 @@ namespace Swift.Core
             /// MM-dd HH:mm 每月定时运行
             /// yyyy-MM-dd HH:mm 定时运行一次
 
-            if (stringValue.EndsWith("H"))
+            if (stringValue.EndsWith("H", StringComparison.Ordinal))
             {
                 PlanType = 5;
                 Hour = int.Parse(stringValue.TrimEnd('H'));
                 return;
             }
 
-            if (stringValue.EndsWith("m"))
+            if (stringValue.EndsWith("m", StringComparison.Ordinal))
             {
                 PlanType = 6;
                 Minute = int.Parse(stringValue.TrimEnd('m'));
@@ -55,14 +55,15 @@ namespace Swift.Core
                     WeekDay = GetWeekDay(wArray[0]);
                     if (!WeekDay.HasValue)
                     {
-                        throw new ArgumentOutOfRangeException("运行时间计划格式无效");
+                        const string Message = "运行时间计划格式无效";
+                        throw new ArgumentOutOfRangeException(nameof(stringValue), Message);
                     }
 
                     var hmArray = wArray[1].Split(':');
                     Hour = int.Parse(hmArray[0]);
                     Minute = int.Parse(hmArray[1]);
                 }
-                else if (stringValue.IndexOf("-") == stringValue.LastIndexOf("-"))
+                else if (stringValue.IndexOf("-", StringComparison.Ordinal) == stringValue.LastIndexOf("-", StringComparison.Ordinal))
                 {
                     PlanType = 3;
 

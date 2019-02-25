@@ -40,6 +40,11 @@ namespace Swift.Core
         public string FileName { get; set; }
 
         /// <summary>
+        /// 可执行文件类型
+        /// </summary>
+        public string ExeType { get; set; }
+
+        /// <summary>
         /// 作业类名称（含命名空间）
         /// </summary>
         public string JobClassName { get; set; }
@@ -109,6 +114,7 @@ namespace Swift.Core
             LastRecordStartTime = jobConfig.LastRecordStartTime;
             Name = jobConfig.Name;
             FileName = jobConfig.FileName;
+            ExeType = jobConfig.ExeType;
             JobClassName = jobConfig.JobClassName;
             RunTimePlan = jobConfig.RunTimePlan;
             RunTimes = jobConfig.RunTimes;
@@ -165,13 +171,14 @@ namespace Swift.Core
         /// 从其他实例复制相关字段的值
         /// </summary>
         /// <param name="config"></param>
-        public void CopyFrom(JobConfig config)
+        public void UpdateFrom(JobConfig config)
         {
             Name = config.Name;
             LastRecordId = config.LastRecordId;
             LastRecordStartTime = config.LastRecordStartTime;
             Name = config.Name;
             FileName = config.FileName;
+            ExeType = config.ExeType;
             JobClassName = config.JobClassName;
             RunTimePlan = config.RunTimePlan;
             RunTimes = config.RunTimes;

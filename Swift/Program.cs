@@ -1,6 +1,7 @@
 ﻿using Swift.Core;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -20,13 +21,13 @@ namespace Swift
             var paras = ResolveArguments(args);
 
             // 检查参数错误
-            ShowMessage("开始参数检查...");
+            //ShowMessage("开始参数检查...");
             List<string> errorMessages = CheckArgumentsError(paras);
             ShowMessage(errorMessages, true);
             ShowMessage("参数检查通过。");
 
             // 加载集群配置
-            ShowMessage("开始加载集群配置...");
+            //ShowMessage("开始加载集群配置...");
 
             string bindingIP = string.Empty;
             if (paras.ContainsKey("-b"))
@@ -46,13 +47,15 @@ namespace Swift
             Member currentMember = null;
             if (memberRole == "manager")
             {
-                ShowMessage("准备注册为Manager...");
+                //ShowMessage("准备注册为Manager...");
                 currentMember = cluster.RegisterManager(currentMemberId);
+                ShowMessage("已注册为Manager...");
             }
             else if (memberRole == "worker")
             {
-                ShowMessage("准备注册为Worker...");
+                //ShowMessage("准备注册为Worker...");
                 currentMember = cluster.RegisterWorker(currentMemberId);
+                ShowMessage("已注册为Worker...");
             }
 
             if (currentMember == null)
@@ -62,14 +65,23 @@ namespace Swift
 
             currentMember.Open();
 
-            var exit = Console.ReadLine();
-            while (exit != "exit")
+            if (Console.In is StreamReader)
             {
-                exit = Console.ReadLine();
-            }
+                Console.WriteLine("Run In Interactive");
 
-            ShowMessage("当前成员准备停止工作...");
-            currentMember.Close();
+                var exit = Console.ReadLine();
+                while (exit != "exit")
+                {
+                    exit = Console.ReadLine();
+                }
+
+                ShowMessage("当前成员准备停止工作...");
+                currentMember.Close();
+            }
+            else
+            {
+                Console.WriteLine("Run In Background");
+            }
         }
 
         /// <summary>
@@ -159,7 +171,7 @@ namespace Swift
 
             for (int i = 0; i < args.Length; i++)
             {
-                if (!args[i].StartsWith("-"))
+                if (!args[i].StartsWith("-", StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -174,7 +186,7 @@ namespace Swift
                 var val = string.Empty;
                 if (i + 1 < args.Length)
                 {
-                    if (!args[i + 1].StartsWith("-"))
+                    if (!args[i + 1].StartsWith("-", StringComparison.Ordinal))
                     {
                         val = args[i + 1].Trim();
                         i = i + 1;

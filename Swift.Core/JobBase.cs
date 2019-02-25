@@ -56,6 +56,15 @@ namespace Swift.Core
         }
 
         /// <summary>
+        /// 可执行文件类型
+        /// </summary>
+        public string ExeType
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
         /// 作业类名称
         /// </summary>
         public string JobClassName
@@ -73,7 +82,6 @@ namespace Swift.Core
             get
             {
                 return Path.Combine(CurrentJobRootPath, Id);
-
             }
         }
 
@@ -98,9 +106,9 @@ namespace Swift.Core
             get
             {
                 var currentDirectory = SwiftConfiguration.BaseDirectory;
-                if (currentDirectory.IndexOf("Jobs") >= 0)
+                if (currentDirectory.IndexOf("Jobs", StringComparison.Ordinal) >= 0)
                 {
-                    return currentDirectory.Substring(0, currentDirectory.IndexOf("Jobs") + 4);
+                    return currentDirectory.Substring(0, currentDirectory.IndexOf("Jobs", StringComparison.Ordinal) + 4);
                 }
                 else
                 {
@@ -136,6 +144,8 @@ namespace Swift.Core
             set;
         }
 
+        // TODO:作业完成时间
+
         /// <summary>
         /// 任务计划
         /// </summary>
@@ -165,15 +175,6 @@ namespace Swift.Core
         }
 
         /// <summary>
-        /// 构造函数
-        /// </summary>
-        /// <param name="id"></param>
-        /// <param name="name"></param>
-        public JobBase()
-        {
-        }
-
-        /// <summary>
         /// 从配置文件创建实例
         /// </summary>
         /// <param name="jobConfig"></param>
@@ -185,6 +186,7 @@ namespace Swift.Core
             job.Name = jobConfig.Name;
             job.JobClassName = jobConfig.JobClassName;
             job.FileName = jobConfig.FileName;
+            job.ExeType = jobConfig.ExeType;
             job.Cluster = cluster;
             job.CreateTime = DateTime.Now;
             job.Version = jobConfig.Version;
@@ -220,11 +222,13 @@ namespace Swift.Core
         /// 从Consul配置更新
         /// </summary>
         /// <param name="job"></param>
-        public void UpdateFromConsul(JobBase job)
+        public void UpdateFrom(JobBase job)
         {
+            // TODO:lock?
             Id = job.Id;
             Name = job.Name;
             FileName = job.FileName;
+            ExeType = job.ExeType;
             JobClassName = job.JobClassName;
             Status = job.Status;
             ModifyIndex = job.ModifyIndex;
@@ -249,7 +253,7 @@ namespace Swift.Core
                     var localTasks = TaskPlan.SelectMany(d => d.Value);
                     foreach (var task in remoteTasks)
                     {
-                        var t = localTasks.Where(d => d.Id == task.Id).FirstOrDefault();
+                        var t = localTasks.FirstOrDefault(d => d.Id == task.Id);
                         if (t != null)
                         {
                             t.Status = task.Status;
@@ -261,9 +265,19 @@ namespace Swift.Core
 
         #region 制定作业计划
 
+        /// <summary>
+        /// 制定作业计划
+        /// </summary>
         public void CreateProductionPlan()
         {
             LogWriter.Write(string.Format("开始创建作业计划：{0},{1}", Name, Id));
+
+            var onlineWorkers = Cluster.GetCurrentWorkers().Where(d => d.Status == 1).ToArray();
+            if (onlineWorkers.Length <= 0)
+            {
+                LogWriter.Write("没有在线的工人，无法创建作业计划。");
+                return;
+            }
 
             // 更新作业状态为PlanMaking
             UpdateJobStatus(EnumJobRecordStatus.PlanMaking);
@@ -287,14 +301,14 @@ namespace Swift.Core
                 var tasks = LoadTasksFromFile().ToArray();
 
                 // 计算每个工人分配的任务数量
-                var taskNumPerWorker = (int)Math.Ceiling(tasks.Length / (double)Cluster.Workers.Length);
+                var taskNumPerWorker = (int)Math.Ceiling(tasks.Length / (double)onlineWorkers.Length);
 
                 // 将任务发给工人处理
                 Dictionary<string, IEnumerable<JobTask>> workerTaskAssign = new Dictionary<string, IEnumerable<JobTask>>();
-                for (int i = 0; i < Cluster.Workers.Length; i++)
+                for (int i = 0; i < onlineWorkers.Length; i++)
                 {
                     var workTasks = tasks.Skip(i * taskNumPerWorker).Take(taskNumPerWorker);
-                    workerTaskAssign.Add(Cluster.Workers[i].Id, workTasks);
+                    workerTaskAssign.Add(onlineWorkers[i].Id, workTasks);
                 }
 
                 this.TaskPlan = workerTaskAssign;
@@ -313,18 +327,28 @@ namespace Swift.Core
         {
             try
             {
+                // TODO:增加一个分割策略的参数，方便运行时调整，比如分割数量
+
                 Process p = new Process();
 
-                // 当前作业文件夹
-                var currentJobStartPath = Path.Combine(CurrentJobSpacePath, FileName);
-                LogWriter.Write("CallJobSplitMethod->currentJobStartPath:" + currentJobStartPath, Log.LogLevel.Debug);
-
+                // 当前作业执行命令
                 string m_cmdLine = string.Format(" -d");
+                var currentJobStartFile = FileName; //默认直接可执行文件
+                var currentJobStartParas = m_cmdLine;
+
+                if (ExeType == "dotnet") // dotnet core
+                {
+                    currentJobStartFile = "dotnet";
+                    currentJobStartParas = " " + FileName + m_cmdLine;
+                }
+
+                LogWriter.Write("CallJobSplitMethod->currentJobStartPath:" + CurrentJobSpacePath, Log.LogLevel.Debug);
+
                 p.StartInfo.WorkingDirectory = CurrentJobSpacePath;
-                p.StartInfo.FileName = currentJobStartPath;
-                p.StartInfo.Arguments = currentJobStartPath + m_cmdLine;
+                p.StartInfo.FileName = currentJobStartFile;
+                p.StartInfo.Arguments = currentJobStartParas;
                 p.StartInfo.UseShellExecute = false;
-                p.StartInfo.RedirectStandardInput = true;
+                //p.StartInfo.RedirectStandardInput = true;
                 p.StartInfo.RedirectStandardOutput = true;
                 p.StartInfo.RedirectStandardError = true;
                 p.StartInfo.CreateNoWindow = true;
@@ -338,25 +362,27 @@ namespace Swift.Core
                         return;
                     }
 
-                    if (e.Data != null && e.Data.StartsWith("GenerateTasks"))
+                    var msg = e.Data;
+
+                    if (msg != null && msg.StartsWith("GenerateTasks", StringComparison.Ordinal))
                     {
-                        if (e.Data.StartsWith("GenerateTasks:OK"))
+                        if (e.Data.StartsWith("GenerateTasks:OK", StringComparison.Ordinal))
                         {
                             string physicalPath = Path.Combine(CurrentJobSpacePath, "taskcreate.status");
                             File.WriteAllText(physicalPath, "0");
                         }
 
-                        if (e.Data.StartsWith("GenerateTasks:Error"))
+                        if (msg.StartsWith("GenerateTasks:Error", StringComparison.Ordinal))
                         {
                             string physicalPath = Path.Combine(CurrentJobSpacePath, "taskcreate.status");
-                            File.WriteAllText(physicalPath, "-1:" + e.Data);
+                            File.WriteAllText(physicalPath, "-1:" + msg);
                         }
 
-                        if (!p.HasExited)
-                        {
-                            p.Close();
-                            p.Dispose();
-                        }
+                        //if (!p.HasExited)
+                        //{
+                        //    p.Close();
+                        //    p.Dispose();
+                        //}
                     }
                 };
 
@@ -368,16 +394,17 @@ namespace Swift.Core
                         return;
                     }
 
-                    if (e.Data != null)
+                    var msg = e.Data;
+                    if (msg != null)
                     {
                         string physicalPath = Path.Combine(CurrentJobSpacePath, "taskcreate.status");
-                        File.WriteAllText(physicalPath, "-1:" + (e.Data == null ? string.Empty : e.Data));
+                        File.WriteAllText(physicalPath, "-1:" + (msg ?? string.Empty));
 
-                        if (!p.HasExited)
-                        {
-                            p.Close();
-                            p.Dispose();
-                        }
+                        //if (!p.HasExited)
+                        //{
+                        //    p.Close();
+                        //    p.Dispose();
+                        //}
                     }
                 };
 
@@ -402,7 +429,8 @@ namespace Swift.Core
                 p.Start();
                 p.BeginOutputReadLine();
                 p.BeginErrorReadLine();
-                //p.WaitForExit();
+                p.WaitForExit();
+                p.Close();
             }
             catch (Exception ex)
             {
@@ -418,10 +446,14 @@ namespace Swift.Core
             // 清除目录下的内容
             try
             {
-                Directory.Delete(CurrentJobSpacePath, true);
+                if (Directory.Exists(CurrentJobSpacePath))
+                {
+                    Directory.Delete(CurrentJobSpacePath, true);
+                }
             }
             catch (DirectoryNotFoundException ex)
             {
+                LogWriter.Write("删除作业空间异常:" + ex.Message);
             }
 
             // 当前作业文件夹
@@ -432,9 +464,13 @@ namespace Swift.Core
 
             // 将程序包解压到当前作业的目录
             var pkgPath = Path.Combine(JobRootPath, Name + ".zip");
-            if (!Directory.Exists(pkgPath))
+            var jobPkgLockName = SwiftConfiguration.GetFileOperateLockName(pkgPath);
+            lock (string.Intern(jobPkgLockName))
             {
-                ZipFile.ExtractToDirectory(pkgPath, CurrentJobSpacePath);
+                if (!Directory.Exists(pkgPath))
+                {
+                    ZipFile.ExtractToDirectory(pkgPath, CurrentJobSpacePath);
+                }
             }
 
             // 保存当前作业配置
@@ -491,9 +527,7 @@ namespace Swift.Core
         private bool BlockCheckJobSplitStatus()
         {
             bool isJobSplitOK = true;
-            int errorCode;
-            string errorMessage;
-            while (!CheckJobSplitStatus(out errorCode, out errorMessage))
+            while (!CheckJobSplitStatus(out int errorCode, out string errorMessage))
             {
                 LogWriter.Write(errorMessage);
 
@@ -557,7 +591,7 @@ namespace Swift.Core
             }
 
             // 任务处理出错
-            if (taskCreateStatus.StartsWith("-1"))
+            if (taskCreateStatus.StartsWith("-1", StringComparison.Ordinal))
             {
                 errorMessage = "创建任务出错：" + taskCreateStatus;
                 errorCode = 5;
@@ -649,16 +683,24 @@ namespace Swift.Core
             {
                 Process p = new Process();
 
+                string m_cmdLine = string.Format(" -p -t {0}", task.Id);
+                var currentJobStartFile = FileName; //默认直接可执行文件
+                var currentJobStartParas = m_cmdLine;
+
+                if (ExeType == "dotnet") // dotnet core
+                {
+                    currentJobStartFile = "dotnet";
+                    currentJobStartParas = " " + FileName + m_cmdLine;
+                }
+
                 // 当前作业文件夹
-                var currentJobStartPath = Path.Combine(CurrentJobSpacePath, FileName);
                 var currentTaskPath = Path.Combine(CurrentJobSpacePath, "tasks", task.Id.ToString());
 
-                string m_cmdLine = string.Format(" -p -t {0}", task.Id);
                 p.StartInfo.WorkingDirectory = CurrentJobSpacePath;
-                p.StartInfo.FileName = currentJobStartPath;
-                p.StartInfo.Arguments = currentJobStartPath + m_cmdLine;
+                p.StartInfo.FileName = currentJobStartFile;
+                p.StartInfo.Arguments = currentJobStartParas;
                 p.StartInfo.UseShellExecute = false;
-                p.StartInfo.RedirectStandardInput = true;
+                //p.StartInfo.RedirectStandardInput = true;
                 p.StartInfo.RedirectStandardOutput = true;
                 p.StartInfo.RedirectStandardError = true;
                 p.StartInfo.CreateNoWindow = true;
@@ -666,40 +708,42 @@ namespace Swift.Core
 
                 p.OutputDataReceived += (s, e) =>
                 {
-                    if (e.Data != null && e.Data.StartsWith("PerformTask"))
+                    var msg = e.Data;
+                    if (msg != null && e.Data.StartsWith("PerformTask", StringComparison.Ordinal))
                     {
-                        if (e.Data.StartsWith("PerformTask:OK"))
+                        if (msg.StartsWith("PerformTask:OK", StringComparison.Ordinal))
                         {
                             string physicalPath = Path.Combine(currentTaskPath, "taskexecute.status");
                             File.WriteAllText(physicalPath, "0");
                         }
 
-                        if (e.Data.StartsWith("PerformTask:Error"))
+                        if (msg.StartsWith("PerformTask:Error", StringComparison.Ordinal))
                         {
                             string physicalPath = Path.Combine(currentTaskPath, "taskexecute.status");
-                            File.WriteAllText(physicalPath, "-1:" + e.Data);
+                            File.WriteAllText(physicalPath, "-1:" + msg);
                         }
 
-                        if (!p.HasExited)
-                        {
-                            p.Close();
-                            p.Dispose();
-                        }
+                        //if (!p.HasExited)
+                        //{
+                        //    p.Close();
+                        //    p.Dispose();
+                        //}
                     }
                 };
 
                 p.ErrorDataReceived += (s, e) =>
                 {
-                    if (e.Data != null)
+                    var msg = e.Data;
+                    if (msg != null)
                     {
                         string physicalPath = Path.Combine(currentTaskPath, "taskexecute.status");
-                        File.WriteAllText(physicalPath, "-1:" + e.Data);
+                        File.WriteAllText(physicalPath, "-1:" + msg);
 
-                        if (!p.HasExited)
-                        {
-                            p.Close();
-                            p.Dispose();
-                        }
+                        //if (!p.HasExited)
+                        //{
+                        //    p.Close();
+                        //    p.Dispose();
+                        //}
                     }
                 };
 
@@ -718,7 +762,8 @@ namespace Swift.Core
                 p.Start();
                 p.BeginOutputReadLine();
                 p.BeginErrorReadLine();
-                //p.WaitForExit();
+                p.WaitForExit();
+                p.Close();
             }
             catch (Exception ex)
             {
@@ -769,9 +814,7 @@ namespace Swift.Core
         {
             bool isOK = true;
 
-            int errorCode;
-            string errorMessage;
-            while (!CheckTaskExecuteStatus(task, out errorCode, out errorMessage))
+            while (!CheckTaskExecuteStatus(task, out int errorCode, out string errorMessage))
             {
                 LogWriter.Write(errorMessage);
 
@@ -857,20 +900,17 @@ namespace Swift.Core
                 .Where(t => t.Status == EnumTaskStatus.Completed
                 || t.Status == EnumTaskStatus.SyncFailed));
 
-                if (executeCompleteTasks.Any())
+                foreach (var task in executeCompleteTasks)
                 {
-                    foreach (var task in executeCompleteTasks)
+                    try
                     {
-                        try
-                        {
-                            PullTaskResult(task);
-                            task.UpdateTaskStatus(EnumTaskStatus.Synced);
-                        }
-                        catch (System.Exception ex)
-                        {
-                            task.UpdateTaskStatus(EnumTaskStatus.SyncFailed);
-                            LogWriter.Write(string.Format("同步任务结果异常:{0}", ex.Message));
-                        }
+                        PullTaskResult(task);
+                        task.UpdateTaskStatus(EnumTaskStatus.Synced);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        task.UpdateTaskStatus(EnumTaskStatus.SyncFailed);
+                        LogWriter.Write(string.Format("同步任务结果异常:{0}", ex.Message));
                     }
                 }
             }
@@ -1039,7 +1079,7 @@ namespace Swift.Core
             }
 
             // 任务处理出错
-            if (taskMergeStatus.StartsWith("-1"))
+            if (taskMergeStatus.StartsWith("-1", StringComparison.Ordinal))
             {
                 errorMessage = "创建合并出错：" + taskMergeStatus;
                 errorCode = 4;
@@ -1062,14 +1102,21 @@ namespace Swift.Core
                 Process p = new Process();
 
                 // 当前作业文件夹
-                var currentJobStartPath = Path.Combine(CurrentJobSpacePath, FileName);
-
                 string m_cmdLine = string.Format(" -m");
+                var currentJobStartFile = FileName; //默认直接可执行文件
+                var currentJobStartParas = m_cmdLine;
+
+                if (ExeType == "dotnet") // dotnet core
+                {
+                    currentJobStartFile = "dotnet";
+                    currentJobStartParas = " " + FileName + m_cmdLine;
+                }
+
                 p.StartInfo.WorkingDirectory = CurrentJobSpacePath;
-                p.StartInfo.FileName = currentJobStartPath;
-                p.StartInfo.Arguments = currentJobStartPath + m_cmdLine;
+                p.StartInfo.FileName = currentJobStartFile;
+                p.StartInfo.Arguments = currentJobStartParas;
                 p.StartInfo.UseShellExecute = false;
-                p.StartInfo.RedirectStandardInput = true;
+                //p.StartInfo.RedirectStandardInput = true;
                 p.StartInfo.RedirectStandardOutput = true;
                 p.StartInfo.RedirectStandardError = true;
                 p.StartInfo.CreateNoWindow = true;
@@ -1077,47 +1124,49 @@ namespace Swift.Core
 
                 p.OutputDataReceived += (s, e) =>
                 {
-                    if (e.Data != null)
+                    var msg = e.Data;
+                    if (msg != null)
                     {
-                        if (e.Data.StartsWith("CollectTaskResults"))
+                        if (msg.StartsWith("CollectTaskResults", StringComparison.Ordinal))
                         {
-                            if (e.Data.StartsWith("CollectTaskResults:OK"))
+                            if (msg.StartsWith("CollectTaskResults:OK", StringComparison.Ordinal))
                             {
                                 string physicalPath = Path.Combine(CurrentJobSpacePath, "taskmerge.status");
                                 File.WriteAllText(physicalPath, "0");
                             }
 
-                            if (e.Data.StartsWith("CollectTaskResults:Error"))
+                            if (msg.StartsWith("CollectTaskResults:Error", StringComparison.Ordinal))
                             {
                                 string physicalPath = Path.Combine(CurrentJobSpacePath, "taskmerge.status");
-                                File.WriteAllText(physicalPath, "-1:" + e.Data);
+                                File.WriteAllText(physicalPath, "-1:" + msg);
                             }
 
-                            if (!p.HasExited)
-                            {
-                                p.Close();
-                                p.Dispose();
-                            }
+                            //if (!p.HasExited)
+                            //{
+                            //    p.Close();
+                            //    p.Dispose();
+                            //}
                         }
                         else
                         {
-                            LogWriter.Write(e.Data);
+                            LogWriter.Write(msg);
                         }
                     }
                 };
 
                 p.ErrorDataReceived += (s, e) =>
                 {
-                    if (e.Data != null)
+                    var msg = e.Data;
+                    if (msg != null)
                     {
                         string physicalPath = Path.Combine(CurrentJobSpacePath, "taskmerge.status");
-                        File.WriteAllText(physicalPath, "-1:" + e.Data);
+                        File.WriteAllText(physicalPath, "-1:" + msg);
 
-                        if (!p.HasExited)
-                        {
-                            p.Close();
-                            p.Dispose();
-                        }
+                        //if (!p.HasExited)
+                        //{
+                        //    p.Close();
+                        //    p.Dispose();
+                        //}
                     }
                 };
 
@@ -1136,7 +1185,8 @@ namespace Swift.Core
                 p.Start();
                 p.BeginOutputReadLine();
                 p.BeginErrorReadLine();
-                //p.WaitForExit();
+                p.WaitForExit();
+                p.Close();
             }
             catch (Exception ex)
             {
@@ -1156,16 +1206,16 @@ namespace Swift.Core
         /// 更新作业状态
         /// </summary>
         /// <param name="status"></param>
-        private void UpdateJobStatus(EnumJobRecordStatus status)
+        private bool UpdateJobStatus(EnumJobRecordStatus status)
         {
-            // 可能同时更新作业记录配置，所以这里用CAS
+            bool result = true;
             KVPair jobRecordKV;
-            int updateIndex = 0;
+            int updateTimes = 0;
 
             do
             {
-                updateIndex++;
-                Log.LogWriter.Write("UpdateJobStatus Execute Index:" + updateIndex, Log.LogLevel.Info);
+                updateTimes++;
+                Log.LogWriter.Write("UpdateJobStatus Execute Times:" + updateTimes, Log.LogLevel.Info);
 
                 Thread.Sleep(200);
 
@@ -1178,23 +1228,30 @@ namespace Swift.Core
                 var jobRecord = JsonConvert.DeserializeObject<JobWrapper>(jobRecordJson);
                 if (jobRecord == null)
                 {
-                    Log.LogWriter.Write(string.Format("更新作业状态时找不到作业是什么鬼？{0}", jobRecordKey), Log.LogLevel.Error);
+                    Log.LogWriter.Write(string.Format("正在更新作业状态，但是作业已不存在: {0}", jobRecordKey), Log.LogLevel.Error);
+                    result = false;
                     break;
                 }
 
                 jobRecord.ModifyIndex = jobRecordKV.ModifyIndex;
                 jobRecord.Status = status;
+
+                // 如果是任务计划制定完毕，则附上计划
                 if (status == EnumJobRecordStatus.PlanMaked)
                 {
                     jobRecord.TaskPlan = this.TaskPlan;
                 }
-                this.UpdateFromConsul(jobRecord);
+
+                // 将作业信息更新到本地
+                this.UpdateFrom(jobRecord);
 
                 jobRecordJson = JsonConvert.SerializeObject(jobRecord);
                 Log.LogWriter.Write("UpdateTaskStatus CAS Value[" + jobRecordKV.ModifyIndex + "]" + jobRecordJson, Log.LogLevel.Trace);
 
                 jobRecordKV.Value = Encoding.UTF8.GetBytes(jobRecordJson);
-            } while (!ConsulKV.CAS(jobRecordKV));
+            } while (!ConsulKV.CAS(jobRecordKV)); // 可能同时更新作业记录配置，所以这里用CAS
+
+            return result;
         }
 
         /// <summary>

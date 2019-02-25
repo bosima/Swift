@@ -55,6 +55,8 @@ namespace Swift.Core
             set;
         }
 
+        // TODO:开始处理时间、完成时间
+
         /// <summary>
         /// 任务处理结果
         /// </summary>
@@ -151,7 +153,7 @@ namespace Swift.Core
                     break;
                 }
                 consulTask.Status = status;
-                Job.UpdateFromConsul(jobRecord);
+                Job.UpdateFrom(jobRecord);
 
                 jobRecordJson = JsonConvert.SerializeObject(jobRecord);
                 Log.LogWriter.Write("UpdateTaskStatus CAS Value[" + jobRecordKV.ModifyIndex + "]" + jobRecordJson, Log.LogLevel.Trace);
@@ -254,7 +256,6 @@ namespace Swift.Core
         /// <summary>
         /// 保存任务结果
         /// </summary>
-        /// <param name="result"></param>
         public void WriteResult()
         {
             var taskPath = CurrentTaskPath;

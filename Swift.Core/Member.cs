@@ -132,7 +132,7 @@ namespace Swift.Core
         {
             communicator = new MemberCommunicator(Id);
             communicator.OnReceiveWebRequestHandler += ProcessRequest;
-            communicator.OnDownloadDataCompletedHandler += ProcessDownloadDataCompleted;
+            communicator.OnReceiveWebResponseHandler += ProcessResponse;
             communicator.Start();
         }
 
@@ -147,17 +147,19 @@ namespace Swift.Core
             }
         }
 
-        #region 下载数据
+        #region 发起数据下载
         /// <summary>
         /// 下载数据
         /// </summary>
         /// <param name="member"></param>
         /// <param name="msgType"></param>
-        /// <param name="msgData"></param>
+        /// <param name="fileName"></param>
         public void Download(Member member, string msgType, string fileName)
         {
-            Dictionary<string, string> paras = new Dictionary<string, string>();
-            paras.Add("fileName", fileName);
+            Dictionary<string, string> paras = new Dictionary<string, string>
+            {
+                { "fileName", fileName }
+            };
 
             Download(member, msgType, paras);
         }
@@ -167,7 +169,7 @@ namespace Swift.Core
         /// </summary>
         /// <param name="member"></param>
         /// <param name="msgType"></param>
-        /// <param name="msgData"></param>
+        /// <param name="paras"></param>
         public void Download(Member member, string msgType, Dictionary<string, string> paras)
         {
             if (communicator == null)
@@ -178,15 +180,18 @@ namespace Swift.Core
             communicator.Download(member, msgType, paras);
         }
 
+        #endregion
+
+        #region 处理响应
         /// <summary>
         /// 下载数据处理
         /// </summary>
         /// <param name="msgType"></param>
-        /// <param name="fileName"></param>
+        /// <param name="paras"></param>
         /// <param name="data"></param>
-        private void ProcessDownloadDataCompleted(string msgType, Dictionary<string, string> paras, byte[] data)
+        private void ProcessResponse(string msgType, Dictionary<string, string> paras, byte[] data)
         {
-            var fileName = paras["fileName"];
+            string fileName = paras["fileName"];
             LogWriter.Write(string.Format("收到下载数据：{0},{1}", msgType, fileName));
 
             if (msgType == "download/job/package")
@@ -212,13 +217,13 @@ namespace Swift.Core
         /// <param name="data"></param>
         private void SaveDownloadFile(string fileName, byte[] data)
         {
-            var fileDirectory = Path.Combine(SwiftConfiguration.BaseDirectory, fileName.Substring(0, fileName.LastIndexOf('/')));
+            string fileDirectory = Path.Combine(SwiftConfiguration.BaseDirectory, fileName.Substring(0, fileName.LastIndexOf('/')));
             if (!Directory.Exists(fileDirectory))
             {
                 Directory.CreateDirectory(fileDirectory);
             }
 
-            var filePath = Path.Combine(fileDirectory, fileName.Substring(fileName.LastIndexOf('/') + 1));
+            string filePath = Path.Combine(fileDirectory, fileName.Substring(fileName.LastIndexOf('/') + 1));
             File.WriteAllBytes(filePath, data);
         }
         #endregion
@@ -233,27 +238,23 @@ namespace Swift.Core
             LogWriter.Write(string.Format("收到请求：{0}", context.Request.RawUrl));
 
             // 输入数据流
-            byte[] inputBytes = new byte[context.Request.ContentLength64];
-            if (inputBytes.LongLength > 0)
+            var contentLength = context.Request.ContentLength64;
+            MemoryStream ms = new MemoryStream();
+            if (contentLength > 0)
             {
-                var offSet = 0;
-                while (offSet < inputBytes.LongLength)
+                int actual = 0;
+                byte[] buffer = new byte[4096];
+                while ((actual = context.Request.InputStream.Read(buffer, 0, 4096)) > 0)
                 {
-                    if (inputBytes.LongLength - offSet > 4096)
-                    {
-                        context.Request.InputStream.Read(inputBytes, offSet, 4096);
-                    }
-                    else
-                    {
-                        context.Request.InputStream.Read(inputBytes, offSet, (int)(inputBytes.LongLength - offSet));
-                    }
-
-                    offSet += 4096;
+                    ms.Write(buffer, 0, actual);
                 }
             }
 
+            ms.Position = 0;
+            byte[] inputBytes = ms.ToArray();
+
             // 下载作业包
-            var absoluteUri = context.Request.Url.AbsolutePath;
+            string absoluteUri = context.Request.Url.AbsolutePath;
             if (absoluteUri == "/download/job/package")
             {
                 // Jobs/{0}.zip
@@ -274,6 +275,13 @@ namespace Swift.Core
                 return ProcessDownloadRequest(inputBytes, context.Request.QueryString);
             }
 
+            // 接收上传的作业包
+            if (absoluteUri == "/upload/job/package")
+            {
+                // Jobs/{0}.zip
+                ProcessUploadRequest(inputBytes, context.Request.QueryString);
+            }
+
             return new byte[0];
         }
 
@@ -282,10 +290,12 @@ namespace Swift.Core
         /// </summary>
         private byte[] ProcessDownloadRequest(byte[] inputData, NameValueCollection paras)
         {
-            var fileName = paras["fileName"];
+            const string ParamName = "fileName";
+
+            string fileName = paras[ParamName];
             if (string.IsNullOrWhiteSpace(fileName))
             {
-                throw new ArgumentNullException("fileName参数为空");
+                throw new ArgumentNullException(ParamName, "文件名为空");
             }
 
             fileName = HttpUtility.UrlDecode(fileName);
@@ -295,6 +305,40 @@ namespace Swift.Core
 
             return File.ReadAllBytes(filePath);
         }
+
+        /// <summary>
+        /// 处理上传请求
+        /// </summary>
+        private void ProcessUploadRequest(byte[] inputData, NameValueCollection paras)
+        {
+            const string ParamName = "fileName";
+
+            string fileName = paras[ParamName];
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                throw new ArgumentNullException(ParamName, "文件名为空");
+            }
+
+            fileName = HttpUtility.UrlDecode(fileName);
+
+            string filePath = Path.Combine(SwiftConfiguration.BaseDirectory, fileName.Replace('/', Path.DirectorySeparatorChar));
+            LogWriter.Write(string.Format("处理上传请求:{0}", filePath));
+
+            if (fileName.Contains('/'))
+            {
+                string direcotryPath = Path.Combine(SwiftConfiguration.BaseDirectory, fileName.Substring(0, fileName.LastIndexOf('/')).Replace('/', Path.DirectorySeparatorChar));
+                if (!Directory.Exists(direcotryPath))
+                {
+                    Directory.CreateDirectory(direcotryPath);
+                }
+            }
+
+            var fileLockName = SwiftConfiguration.GetFileOperateLockName(filePath);
+            lock (string.Intern(fileLockName))
+            {
+                File.WriteAllBytes(filePath, inputData);
+            }
+        }
         #endregion
 
         /// <summary>
@@ -302,7 +346,7 @@ namespace Swift.Core
         /// </summary>
         /// <param name="member"></param>
         /// <param name="msgType"></param>
-        /// <param name="msgData"></param>
+        /// <param name="msg"></param>
         public void SendMessage(Member member, string msgType, string msg)
         {
             if (communicator == null)
