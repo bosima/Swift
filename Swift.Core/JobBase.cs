@@ -4,6 +4,7 @@ using Swift.Core.Consul;
 using Swift.Core.ExtensionException;
 using Swift.Core.Log;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -20,12 +21,30 @@ namespace Swift.Core
     public abstract class JobBase
     {
         /// <summary>
+        /// The job process dictionary.
+        /// </summary>
+        private readonly ConcurrentDictionary<string, SwiftProcess> _jobProcessDictionary = new ConcurrentDictionary<string, SwiftProcess>();
+
+        /// <summary>
         /// 作业Id：用于区分不同的作业处理记录
         /// </summary>
         public string Id
         {
             get;
             set;
+        }
+
+        /// <summary>
+        /// 业务唯一Id
+        /// </summary>
+        /// <value>The unique identifier.</value>
+        [JsonIgnore]
+        public string BusinessId
+        {
+            get
+            {
+                return FormatBusinessId(Name, Id);
+            }
         }
 
         /// <summary>
@@ -74,46 +93,63 @@ namespace Swift.Core
         }
 
         /// <summary>
-        /// 当前作业空间的物理路径
+        /// Swift成员不可用的时间阈值，单位分钟，默认10。
+        /// 如果已经分配任务的成员连续不可用超过此时间，则将此成员的任务重新分配给其它正常成员。
+        /// </summary>
+        /// <value>The re make task plan.</value>
+        public int MemberUnavailableThreshold { get; set; }
+
+        /// <summary>
+        /// 单个任务执行超时时间，单位分钟，默认1440
+        /// </summary>
+        /// <value>The task execute timeout.</value>
+        public int TaskExecuteTimeout { get; set; }
+
+        /// <summary>
+        /// 作业分割执行超时时间，单位分钟，默认120
+        /// </summary>
+        /// <value>The task execute timeout.</value>
+        public int JobSplitTimeout { get; set; }
+
+        /// <summary>
+        /// 任务结果合并执行超时时间，单位分钟，默认120
+        /// </summary>
+        /// <value>The task execute timeout.</value>
+        public int TaskResultCollectTimeout { get; set; }
+
+        /// <summary>
+        /// 当前作业实例的物理路径
         /// </summary>
         [JsonIgnore]
         public string CurrentJobSpacePath
         {
             get
             {
-                return Path.Combine(CurrentJobRootPath, Id);
+                return SwiftConfiguration.GetJobRecordRootPath(Name, Id);
             }
         }
 
         /// <summary>
-        /// 当前作业路径
+        /// 当前作业所有文件的物理路径
         /// </summary>
         [JsonIgnore]
         public string CurrentJobRootPath
         {
             get
             {
-                return Path.Combine(JobRootPath, Name);
+                return SwiftConfiguration.GetJobRootPath(Name);
             }
         }
 
         /// <summary>
-        /// 作业根路径
+        /// Swift实例下全部作业根路径
         /// </summary>
         [JsonIgnore]
         public string JobRootPath
         {
             get
             {
-                var currentDirectory = SwiftConfiguration.BaseDirectory;
-                if (currentDirectory.IndexOf("Jobs", StringComparison.Ordinal) >= 0)
-                {
-                    return currentDirectory.Substring(0, currentDirectory.IndexOf("Jobs", StringComparison.Ordinal) + 4);
-                }
-                else
-                {
-                    return Path.Combine(currentDirectory, "Jobs");
-                }
+                return SwiftConfiguration.AllJobRootPath;
             }
         }
 
@@ -144,7 +180,59 @@ namespace Swift.Core
             set;
         }
 
-        // TODO:作业完成时间
+        /// <summary>
+        /// 作业开始时间
+        /// </summary>
+        public DateTime StartTime
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// 作业完成时间
+        /// </summary>
+        public DateTime FinishedTime
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// 作业分割开始时间
+        /// </summary>
+        public DateTime JobSplitStartTime
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// 作业分割完成时间
+        /// </summary>
+        public DateTime JobSplitEndTime
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// 任务合并开始时间
+        /// </summary>
+        public DateTime CollectTaskResultStartTime
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// 任务合并结束时间
+        /// </summary>
+        public DateTime CollectTaskResultEndTime
+        {
+            get;
+            set;
+        }
 
         /// <summary>
         /// 任务计划
@@ -166,12 +254,24 @@ namespace Swift.Core
         }
 
         /// <summary>
-        /// 作业文件的字节数组
+        /// 从其它实例复制元数据
         /// </summary>
-        public byte[] FileBytes
+        /// <param name="job">Job.</param>
+        public void CopyMetaFrom(JobBase job)
         {
-            get;
-            set;
+            this.FileName = job.FileName;
+            this.Id = job.Id;
+            this.Name = job.Name;
+            this.JobClassName = job.JobClassName;
+            this.Status = job.Status;
+            this.TaskPlan = job.TaskPlan;
+            this.CreateTime = job.CreateTime;
+            this.ModifyIndex = job.ModifyIndex;
+            this.Version = job.Version;
+            this.TaskExecuteTimeout = job.TaskExecuteTimeout;
+            this.JobSplitTimeout = job.JobSplitTimeout;
+            this.TaskResultCollectTimeout = job.TaskResultCollectTimeout;
+            this.MemberUnavailableThreshold = job.MemberUnavailableThreshold;
         }
 
         /// <summary>
@@ -181,15 +281,21 @@ namespace Swift.Core
         /// <returns></returns>
         public static JobWrapper CreateInstance(JobConfig jobConfig, Cluster cluster)
         {
-            JobWrapper job = new JobWrapper();
-            job.Id = DateTime.Now.ToString("yyyyMMddHHmmssfff");
-            job.Name = jobConfig.Name;
-            job.JobClassName = jobConfig.JobClassName;
-            job.FileName = jobConfig.FileName;
-            job.ExeType = jobConfig.ExeType;
-            job.Cluster = cluster;
-            job.CreateTime = DateTime.Now;
-            job.Version = jobConfig.Version;
+            JobWrapper job = new JobWrapper
+            {
+                Id = DateTime.Now.ToString("yyyyMMddHHmmssfff"),
+                Name = jobConfig.Name,
+                JobClassName = jobConfig.JobClassName,
+                FileName = jobConfig.FileName,
+                ExeType = jobConfig.ExeType,
+                Cluster = cluster,
+                CreateTime = DateTime.Now,
+                Version = jobConfig.Version,
+                TaskExecuteTimeout = jobConfig.TaskExecuteTimeout,
+                JobSplitTimeout = jobConfig.JobSplitTimeout,
+                TaskResultCollectTimeout = jobConfig.TaskResultCollectTimeout,
+                MemberUnavailableThreshold = jobConfig.MemberUnavailableThreshold,
+            };
             return job;
         }
 
@@ -219,60 +325,183 @@ namespace Swift.Core
         }
 
         /// <summary>
-        /// 从Consul配置更新
+        /// Formats the business identifier.
         /// </summary>
-        /// <param name="job"></param>
-        public void UpdateFrom(JobBase job)
+        /// <returns>The business identifier.</returns>
+        /// <param name="jobName">Job name.</param>
+        /// <param name="jobId">Job identifier.</param>
+        public static string FormatBusinessId(string jobName, string jobId)
         {
-            // TODO:lock?
-            Id = job.Id;
-            Name = job.Name;
-            FileName = job.FileName;
-            ExeType = job.ExeType;
-            JobClassName = job.JobClassName;
-            Status = job.Status;
-            ModifyIndex = job.ModifyIndex;
-            CreateTime = job.CreateTime;
-            FileBytes = job.FileBytes;
-            Version = job.Version;
+            return jobName + "_" + jobId;
+        }
 
-            if (job.Cluster != null)
-            {
-                Cluster = job.Cluster;
-            }
-
+        /// <summary>
+        /// Relates the process.
+        /// </summary>
+        /// <param name="method">Method.</param>
+        /// <param name="process">Process.</param>
+        public void RelateProcess(string method, SwiftProcess process)
+        {
+            _jobProcessDictionary.TryAdd(method, process);
+        }
+        #region 制定作业计划
+        /// <summary>
+        /// 替换任务计划中离线的Worker
+        /// </summary>
+        public void ReplaceTaskPlanOfflineWorker(CancellationToken cancellationToken = default(CancellationToken))
+        {
             if (TaskPlan == null || TaskPlan.Count <= 0)
             {
-                TaskPlan = job.TaskPlan;
+                return;
             }
-            else
+
+            var latestWorkers = Cluster.GetLatestWorkers(cancellationToken);
+            var onlineWorkers = latestWorkers.Where(d => d.Status == 1).ToArray();
+            bool hasWorkerStatusChanged = false;
+            var taskMemberIds = TaskPlan.Keys.ToArray();
+
+            foreach (var memberId in taskMemberIds)
             {
-                if (job.TaskPlan != null && job.TaskPlan.Count > 0)
+                var jobTasks = TaskPlan[memberId].ToArray();
+
+                // 如果任务已经完成，工人剧本切换到管理员剧本，则这个任务不用重新分配
+                if (memberId == Cluster.Manager.Id
+                     && jobTasks.Count(d => d.Status == EnumTaskStatus.Completed
+                        || d.Status == EnumTaskStatus.Synced) == jobTasks.Length)
                 {
-                    var remoteTasks = job.TaskPlan.SelectMany(d => d.Value);
-                    var localTasks = TaskPlan.SelectMany(d => d.Value);
-                    foreach (var task in remoteTasks)
-                    {
-                        var t = localTasks.FirstOrDefault(d => d.Id == task.Id);
-                        if (t != null)
-                        {
-                            t.Status = task.Status;
-                        }
-                    }
+                    continue;
                 }
+
+                if (!onlineWorkers.Any(d => d.Id == memberId))
+                {
+                    if (Status == EnumJobRecordStatus.Canceling)
+                    {
+                        hasWorkerStatusChanged = SetTaskStatusToCanceldInCancelingJob(jobTasks);
+                        LogWriter.Write(string.Format("作业取消中，将下线Worker的任务状态全部设为已取消：{0}", memberId), Log.LogLevel.Warn);
+                        continue;
+                    }
+
+                    var offlineWorker = latestWorkers.FirstOrDefault(d => d.Id == memberId);
+                    if (CheckIsNeedReplaceTaskWorker(offlineWorker))
+                    {
+                        LogWriter.Write("离线工人还有希望上线，暂不移交任务:" + memberId, Log.LogLevel.Debug);
+                        continue;
+                    }
+
+                    LogWriter.Write("准备移交工人任务：" + memberId, Log.LogLevel.Debug);
+                    LogWriter.Write("Worker任务：" + JsonConvert.SerializeObject(jobTasks), Log.LogLevel.Trace);
+
+                    // 如果存在作业没有使用的新工人，则使用新工人；否则尽可能平均分配给现有的成员
+                    hasWorkerStatusChanged = ReplcaeTaskWorker(onlineWorkers, taskMemberIds, memberId, jobTasks);
+                }
+            }
+
+            if (hasWorkerStatusChanged)
+            {
+                // 保存作业计划，合并的时候需要
+                WriteJobSpaceConfig(cancellationToken);
+
+                UpdateJobTaskPlan(cancellationToken);
             }
         }
 
-        #region 制定作业计划
+        /// <summary>
+        /// 替换任务工人
+        /// </summary>
+        /// <returns><c>true</c>, if task worker was replcaed, <c>false</c> otherwise.</returns>
+        /// <param name="onlineWorkers">在线工人数组</param>
+        /// <param name="taskMemberIds">任务所有工人ID数组</param>
+        /// <param name="currentMemberId">当前任务所属工人Id</param>
+        /// <param name="jobTasks">要处理的任务数组</param>
+        private bool ReplcaeTaskWorker(Member[] onlineWorkers, string[] taskMemberIds, string currentMemberId, JobTask[] jobTasks)
+        {
+            bool hasWorkerStatusChanged = false;
+
+            var newWorker = onlineWorkers.FirstOrDefault(d => !taskMemberIds.Contains(d.Id));
+            if (newWorker != null)
+            {
+                foreach (var jobTask in jobTasks)
+                {
+                    jobTask.StartTime = DateTime.MinValue;
+                    jobTask.FinishedTime = DateTime.MinValue;
+                    jobTask.Status = EnumTaskStatus.Pending;
+                }
+
+                TaskPlan.Remove(currentMemberId);
+                TaskPlan.Add(newWorker.Id, jobTasks);
+                hasWorkerStatusChanged = true;
+                LogWriter.Write("替换任务的下线工人:" + currentMemberId + "->" + newWorker.Id, Log.LogLevel.Warn);
+            }
+            else
+            {
+                if (onlineWorkers.Length > 0)
+                {
+                    int i = 0;
+                    foreach (var jobTask in jobTasks)
+                    {
+                        var onlineWorker = onlineWorkers[i];
+                        jobTask.StartTime = DateTime.MinValue;
+                        jobTask.FinishedTime = DateTime.MinValue;
+                        jobTask.Status = EnumTaskStatus.Pending;
+                        TaskPlan[onlineWorker.Id] = TaskPlan[onlineWorker.Id].Append(jobTask);
+
+                        i++;
+                        if (i >= onlineWorkers.Length)
+                        {
+                            i = 0;
+                        }
+                    }
+
+                    TaskPlan.Remove(currentMemberId);
+                    hasWorkerStatusChanged = true;
+                    LogWriter.Write("转移下线工人的任务:" + currentMemberId, Log.LogLevel.Warn);
+                }
+            }
+
+            return hasWorkerStatusChanged;
+        }
+
+        /// <summary>
+        /// 设置取消中作业的任务状态为已取消
+        /// </summary>
+        /// <returns><c>true</c>, if task status to canceld in canceling job was set, <c>false</c> otherwise.</returns>
+        /// <param name="jobTasks">Job tasks.</param>
+        private static bool SetTaskStatusToCanceldInCancelingJob(JobTask[] jobTasks)
+        {
+            bool hasWorkerStatusChanged;
+            foreach (var jobTask in jobTasks)
+            {
+                jobTask.Status = EnumTaskStatus.Canceled;
+            }
+            hasWorkerStatusChanged = true;
+
+            return hasWorkerStatusChanged;
+        }
+
+        /// <summary>
+        /// 检查是否需要替换任务工人
+        /// </summary>
+        /// <returns><c>true</c>, if is need replace task worker was checked, <c>false</c> otherwise.</returns>
+        /// <param name="offlineWorker">Offline worker.</param>
+        private bool CheckIsNeedReplaceTaskWorker(Member offlineWorker)
+        {
+            if (offlineWorker != null
+                && DateTime.Now.Subtract(offlineWorker.OfflineTime.Value).TotalMinutes < MemberUnavailableThreshold)
+            {
+                return false;
+            }
+
+            return true;
+        }
 
         /// <summary>
         /// 制定作业计划
         /// </summary>
-        public void CreateProductionPlan()
+        public void CreateProductionPlan(CancellationToken cancellationToken)
         {
             LogWriter.Write(string.Format("开始创建作业计划：{0},{1}", Name, Id));
 
-            var onlineWorkers = Cluster.GetCurrentWorkers().Where(d => d.Status == 1).ToArray();
+            var onlineWorkers = Cluster.GetLatestWorkers(cancellationToken).Where(d => d.Status == 1).ToArray();
             if (onlineWorkers.Length <= 0)
             {
                 LogWriter.Write("没有在线的工人，无法创建作业计划。");
@@ -280,25 +509,26 @@ namespace Swift.Core
             }
 
             // 更新作业状态为PlanMaking
-            UpdateJobStatus(EnumJobRecordStatus.PlanMaking);
+            UpdateJobStatus(EnumJobRecordStatus.PlanMaking, cancellationToken);
 
             // 创建当前作业空间
-            CreateJobSpace();
+            CreateJobSpace(cancellationToken);
 
             // 调用分割作业的方法
-            CallJobSplitMethod();
+            CallJobSplitMethod(cancellationToken);
 
             // 阻塞检查作业分割进度
-            bool isJobSplitOK = BlockCheckJobSplitStatus();
+            bool isJobSplitOK = CheckJobSplitStatus(out int errorCode, out string errorMessage);
+            LogWriter.Write(errorMessage);
 
             if (!isJobSplitOK)
             {
-                UpdateJobStatus(EnumJobRecordStatus.PlanFailed);
-                LogWriter.Write(string.Format("作业计划制定失败。"));
+                UpdateJobStatus(EnumJobRecordStatus.PlanFailed, cancellationToken);
+                LogWriter.Write(string.Format("作业分割失败。"));
             }
             else
             {
-                var tasks = LoadTasksFromFile().ToArray();
+                var tasks = LoadTasksFromFile(cancellationToken).ToArray();
 
                 // 计算每个工人分配的任务数量
                 var taskNumPerWorker = (int)Math.Ceiling(tasks.Length / (double)onlineWorkers.Length);
@@ -313,9 +543,10 @@ namespace Swift.Core
 
                 this.TaskPlan = workerTaskAssign;
 
-                WriteJobSpaceConfig();
+                // 保存作业计划，合并的时候需要
+                WriteJobSpaceConfig(cancellationToken);
 
-                UpdateJobStatus(EnumJobRecordStatus.PlanMaked);
+                UpdateJobStatus(EnumJobRecordStatus.PlanMaked, cancellationToken);
                 LogWriter.Write(string.Format("作业计划制定完毕。"));
             }
         }
@@ -323,126 +554,121 @@ namespace Swift.Core
         /// <summary>
         /// 调用作业分割方法，将调用具体作业实现的分割方法
         /// </summary>
-        private void CallJobSplitMethod()
+        private void CallJobSplitMethod(CancellationToken cancellationToken = default(CancellationToken))
         {
-            try
+            string taskCreateStatusPath = SwiftConfiguration.GetJobSplitStatusPath(CurrentJobSpacePath);
+
+            var actions = new SwiftProcessEventActions
             {
-                // TODO:增加一个分割策略的参数，方便运行时调整，比如分割数量
+                OutputAction = (s, e) =>
+                 {
+                     var msg = e.Data;
+                     if (msg != null)
+                     {
+                         LogWriter.Write(string.Format("{0} output: {1}", s.BusinessId, msg));
+                     }
+                 },
 
-                Process p = new Process();
+                ErrorAction = (s, e) =>
+                 {
+                     var msg = e.Data;
+                     if (msg != null)
+                     {
+                         try
+                         {
+                             File.WriteAllText(taskCreateStatusPath, "-1:" + (msg ?? string.Empty));
+                         }
+                         catch (Exception ex)
+                         {
+                             LogWriter.Write("write taskcreate.status go exception", ex);
+                         }
 
-                // 当前作业执行命令
-                string m_cmdLine = string.Format(" -d");
-                var currentJobStartFile = FileName; //默认直接可执行文件
-                var currentJobStartParas = m_cmdLine;
+                         LogWriter.Write(msg);
+                     }
+                 },
 
-                if (ExeType == "dotnet") // dotnet core
+                ExitAction = (s, e) =>
+                 {
+                     try
+                     {
+                         LogWriter.Write("split job process exit:" + s.ExitCode);
+                     }
+                     catch (Exception ex)
+                     {
+                         LogWriter.Write("get split job process exit code go exception", ex);
+                     }
+                 },
+
+                TimeoutAction = (s, e) =>
                 {
-                    currentJobStartFile = "dotnet";
-                    currentJobStartParas = " " + FileName + m_cmdLine;
-                }
-
-                LogWriter.Write("CallJobSplitMethod->currentJobStartPath:" + CurrentJobSpacePath, Log.LogLevel.Debug);
-
-                p.StartInfo.WorkingDirectory = CurrentJobSpacePath;
-                p.StartInfo.FileName = currentJobStartFile;
-                p.StartInfo.Arguments = currentJobStartParas;
-                p.StartInfo.UseShellExecute = false;
-                //p.StartInfo.RedirectStandardInput = true;
-                p.StartInfo.RedirectStandardOutput = true;
-                p.StartInfo.RedirectStandardError = true;
-                p.StartInfo.CreateNoWindow = true;
-                p.EnableRaisingEvents = true;
-
-                p.OutputDataReceived += (s, e) =>
-                {
-                    if (p == null)
-                    {
-                        LogWriter.Write("OutputDataReceived:作业分割进程已退出。");
-                        return;
-                    }
-
-                    var msg = e.Data;
-
-                    if (msg != null && msg.StartsWith("GenerateTasks", StringComparison.Ordinal))
-                    {
-                        if (e.Data.StartsWith("GenerateTasks:OK", StringComparison.Ordinal))
-                        {
-                            string physicalPath = Path.Combine(CurrentJobSpacePath, "taskcreate.status");
-                            File.WriteAllText(physicalPath, "0");
-                        }
-
-                        if (msg.StartsWith("GenerateTasks:Error", StringComparison.Ordinal))
-                        {
-                            string physicalPath = Path.Combine(CurrentJobSpacePath, "taskcreate.status");
-                            File.WriteAllText(physicalPath, "-1:" + msg);
-                        }
-
-                        //if (!p.HasExited)
-                        //{
-                        //    p.Close();
-                        //    p.Dispose();
-                        //}
-                    }
-                };
-
-                p.ErrorDataReceived += (s, e) =>
-                {
-                    if (p == null)
-                    {
-                        LogWriter.Write("ErrorDataReceived:作业分割进程已退出。");
-                        return;
-                    }
-
-                    var msg = e.Data;
-                    if (msg != null)
-                    {
-                        string physicalPath = Path.Combine(CurrentJobSpacePath, "taskcreate.status");
-                        File.WriteAllText(physicalPath, "-1:" + (msg ?? string.Empty));
-
-                        //if (!p.HasExited)
-                        //{
-                        //    p.Close();
-                        //    p.Dispose();
-                        //}
-                    }
-                };
-
-                p.Exited += (s, e) =>
-                {
-                    if (p == null)
-                    {
-                        LogWriter.Write("Exited:作业分割进程已退出。");
-                        return;
-                    }
-
                     try
                     {
-                        LogWriter.Write("作业分割进程退出:" + p.ExitCode);
+                        File.WriteAllText(taskCreateStatusPath, "-1:task create timeout");
                     }
                     catch (Exception ex)
                     {
-                        LogWriter.Write("作业分割进程退出处理失败:" + ex.Message);
+                        LogWriter.Write("write taskcreate.status with timeout go exception", ex);
                     }
-                };
+                }
+            };
 
-                p.Start();
-                p.BeginOutputReadLine();
-                p.BeginErrorReadLine();
-                p.WaitForExit();
-                p.Close();
-            }
-            catch (Exception ex)
-            {
-                LogWriter.Write(string.Format("CallJobSplitMethod异常:{0},{1}", ex.Message, ex.StackTrace));
-            }
+            SwiftProcess process = new SwiftProcess("SplitJob", this, actions);
+            process.SplitJob(cancellationToken);
         }
 
         /// <summary>
         /// 为当前作业创建作业空间
         /// </summary>
-        public void CreateJobSpace()
+        public void CreateJobSpace(CancellationToken cancellationToken = default(CancellationToken))
         {
+            ClearJobSpace(cancellationToken);
+
+            CreateJobSpaceDirectory(cancellationToken);
+
+            ExtractJobPackageToJobSpace(cancellationToken);
+
+            WriteJobSpaceConfig(cancellationToken);
+        }
+
+        /// <summary>
+        /// 解压作业包到作业空间
+        /// </summary>
+        private void ExtractJobPackageToJobSpace(CancellationToken cancellationToken = default(CancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // 将程序包解压到当前作业的目录
+            var pkgPath = SwiftConfiguration.GetJobPackagePath(Name, Version);
+            var jobPkgLockName = SwiftConfiguration.GetFileOperateLockName(pkgPath);
+            lock (string.Intern(jobPkgLockName))
+            {
+                ZipFile.ExtractToDirectory(pkgPath, CurrentJobSpacePath);
+            }
+        }
+
+        /// <summary>
+        /// 创建作业空间目录
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        private void CreateJobSpaceDirectory(CancellationToken cancellationToken = default(CancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // 当前作业文件夹
+            if (!Directory.Exists(CurrentJobSpacePath))
+            {
+                Directory.CreateDirectory(CurrentJobSpacePath);
+            }
+        }
+
+        /// <summary>
+        /// 清空作业空间
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        private void ClearJobSpace(CancellationToken cancellationToken = default(CancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
             // 清除目录下的内容
             try
             {
@@ -453,28 +679,8 @@ namespace Swift.Core
             }
             catch (DirectoryNotFoundException ex)
             {
-                LogWriter.Write("删除作业空间异常:" + ex.Message);
+                LogWriter.Write("作业空间还不存在，无需清空", ex, Log.LogLevel.Debug);
             }
-
-            // 当前作业文件夹
-            if (!Directory.Exists(CurrentJobSpacePath))
-            {
-                Directory.CreateDirectory(CurrentJobSpacePath);
-            }
-
-            // 将程序包解压到当前作业的目录
-            var pkgPath = Path.Combine(JobRootPath, Name + ".zip");
-            var jobPkgLockName = SwiftConfiguration.GetFileOperateLockName(pkgPath);
-            lock (string.Intern(jobPkgLockName))
-            {
-                if (!Directory.Exists(pkgPath))
-                {
-                    ZipFile.ExtractToDirectory(pkgPath, CurrentJobSpacePath);
-                }
-            }
-
-            // 保存当前作业配置
-            WriteJobSpaceConfig();
         }
 
         /// <summary>
@@ -482,14 +688,13 @@ namespace Swift.Core
         /// </summary>
         public void GenerateTasks()
         {
-            if (!Directory.Exists(CurrentJobSpacePath))
-            {
-                Console.Write("GenerateTasks:Error:作业空间目录不存在");
-                return;
-            }
+            // 在进程内部记录进程Id，方便跟踪Swift启动的进程
+            CreateProcessFile("SplitJob", Process.GetCurrentProcess().Id);
+
+            Console.WriteLine("开始生成当前作业的任务");
 
             // 保存任务创建状态文件
-            string taskCreateStatusFilePath = Path.Combine(CurrentJobSpacePath, "taskcreate.status");
+            string taskCreateStatusFilePath = SwiftConfiguration.GetJobSplitStatusPath(CurrentJobSpacePath);
             File.WriteAllText(taskCreateStatusFilePath, "1");
 
             try
@@ -499,16 +704,19 @@ namespace Swift.Core
                 // 保存任务文件
                 foreach (var task in tasks)
                 {
+                    task.ExecuteTimeout = TaskExecuteTimeout;
                     task.Job = new JobWrapper(this);
                     task.WriteConfig();
                     task.WriteRequirement();
                 }
 
+                File.WriteAllText(taskCreateStatusFilePath, "0");
                 Console.WriteLine("GenerateTasks:OK");
             }
             catch (Exception ex)
             {
-                Console.WriteLine("GenerateTasks:Error:" + ex.Message);
+                File.WriteAllText(taskCreateStatusFilePath, "-1:" + ex.Message);
+                Console.WriteLine("GenerateTasks:Error:" + ex.Message + ex.StackTrace);
             }
         }
 
@@ -521,26 +729,64 @@ namespace Swift.Core
         public abstract JobTask[] Split();
 
         /// <summary>
+        /// 此时进程已经脱离Swift控制，只能监控运行
+        /// </summary>
+        public void MointorRunJobSplit(CancellationToken cancellationToken = default(CancellationToken))
+        {
+            var isExecuteOK = BlockCheckJobSplitStatus(cancellationToken);
+            if (isExecuteOK)
+            {
+                UpdateJobStatus(EnumJobRecordStatus.PlanMaked, cancellationToken);
+                LogWriter.Write(string.Format("作业分割执行成功:{0}", BusinessId));
+            }
+            else
+            {
+                UpdateJobStatus(EnumJobRecordStatus.PlanFailed, cancellationToken);
+                LogWriter.Write(string.Format("作业分割执行失败:{0}", BusinessId));
+            }
+        }
+
+        /// <summary>
         /// 阻塞检查作业分割状态
         /// </summary>
         /// <returns></returns>
-        private bool BlockCheckJobSplitStatus()
+        private bool BlockCheckJobSplitStatus(CancellationToken cancellationToken = default(CancellationToken))
         {
-            bool isJobSplitOK = true;
+            bool isOK = true;
+
             while (!CheckJobSplitStatus(out int errorCode, out string errorMessage))
             {
-                LogWriter.Write(errorMessage);
-
-                if (errorCode == 5)
+                if (cancellationToken.IsCancellationRequested)
                 {
-                    isJobSplitOK = false;
+                    // 如果取消了，则跳出循环，执行进程Kill
+                    break;
+                }
+
+                LogWriter.Write(errorMessage, Log.LogLevel.Trace);
+
+                // 明确出错
+                if (errorCode == 3 || errorCode == 5)
+                {
+                    LogWriter.Write(errorMessage);
+                    isOK = false;
+                    break;
+                }
+
+                // 超时运行
+                if (JobSplitTimeout * 60 < DateTime.Now.Subtract(JobSplitStartTime).TotalSeconds)
+                {
+                    LogWriter.Write(string.Format("monitor job split process timeout: {0}", BusinessId));
+                    isOK = false;
                     break;
                 }
 
                 Thread.Sleep(3000);
             }
 
-            return isJobSplitOK;
+            // 进一步确保进程被关闭:超时、资源未释放可能导致进程刮起等情况
+            KillJobSplitProcess();
+
+            return isOK;
         }
 
         /// <summary>
@@ -551,23 +797,34 @@ namespace Swift.Core
         /// <returns></returns>
         private bool CheckJobSplitStatus(out int errorCode, out string errorMessage)
         {
-            errorCode = -1;
-            errorMessage = string.Empty;
+            var result = GetJobSplitStatus();
 
-            if (!Directory.Exists(CurrentJobSpacePath))
+            errorCode = result.ErrCode;
+            errorMessage = result.ErrMessage;
+
+            if (errorCode == 0)
             {
-                errorMessage = "作业创建等待中...";
-                errorCode = 1;
-                return false;
+                return true;
             }
 
+            return false;
+        }
+
+        /// <summary>
+        /// 获取作业分割状态
+        /// </summary>
+        /// <returns>The job split status.</returns>
+        public CommonResult GetJobSplitStatus()
+        {
             // 读取任务创建状态
-            string physicalPath = Path.Combine(CurrentJobSpacePath, "taskcreate.status");
+            string physicalPath = SwiftConfiguration.GetJobSplitStatusPath(CurrentJobSpacePath);
             if (!File.Exists(physicalPath))
             {
-                errorMessage = "任务创建等待中...";
-                errorCode = 2;
-                return false;
+                return new CommonResult()
+                {
+                    ErrCode = 2,
+                    ErrMessage = "任务创建等待中..."
+                };
             }
 
             var taskCreateStatus = "";
@@ -577,31 +834,38 @@ namespace Swift.Core
             }
             catch (Exception ex)
             {
-                errorMessage = "读取任务创建状态异常：" + ex.Message;
-                errorCode = 3;
-                return false;
+                return new CommonResult()
+                {
+                    ErrCode = 3,
+                    ErrMessage = "读取任务创建状态异常：" + ex.Message
+                };
             }
 
             // 正在写入
             if (taskCreateStatus == "1")
             {
-                errorMessage = "任务创建中...";
-                errorCode = 4;
-                return false;
+                return new CommonResult()
+                {
+                    ErrCode = 4,
+                    ErrMessage = "任务创建中..."
+                };
             }
 
             // 任务处理出错
             if (taskCreateStatus.StartsWith("-1", StringComparison.Ordinal))
             {
-                errorMessage = "创建任务出错：" + taskCreateStatus;
-                errorCode = 5;
-                return false;
+                return new CommonResult()
+                {
+                    ErrCode = 5,
+                    ErrMessage = "创建任务出错：" + taskCreateStatus
+                };
             }
 
-            errorMessage = "任务创建完毕。";
-            errorCode = 0;
-
-            return true;
+            return new CommonResult()
+            {
+                ErrCode = 0,
+                ErrMessage = "任务创建完毕。"
+            };
         }
         #endregion
 
@@ -610,27 +874,46 @@ namespace Swift.Core
         /// 运行任务
         /// </summary>
         /// <param name="task"></param>
-        public void RunTask(JobTask task)
+        public void RunTask(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
         {
-            PullTaskRequirement(task);
+            PullTaskRequirement(task, cancellationToken);
 
-            // 开启处理任务
-            StartRunTask(task);
+            StartRunTask(task, cancellationToken);
 
-            // 调用任务执行方法
-            CallTaskExecuteMethod(task);
+            CallTaskExecuteMethod(task, cancellationToken);
 
-            // 阻塞并检查任务执行状态
-            bool isExecuteOK = BlockCheckTaskExecuteStatus(task);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            bool isExecuteOK = CheckTaskExecuteStatus(task, out int errorCode, out string errorMessage);
+            LogWriter.Write(errorMessage);
 
             if (isExecuteOK)
             {
-                task.UpdateTaskStatus(EnumTaskStatus.Completed);
+                task.UpdateTaskStatus(EnumTaskStatus.Completed, cancellationToken);
                 LogWriter.Write(string.Format("任务执行成功:{0},{1},{2}", Name, Id, task.Id));
             }
             else
             {
-                task.UpdateTaskStatus(EnumTaskStatus.Failed);
+                task.UpdateTaskStatus(EnumTaskStatus.Failed, cancellationToken);
+                LogWriter.Write(string.Format("任务执行失败:{0},{1},{2}", Name, Id, task.Id));
+            }
+        }
+
+        /// <summary>
+        /// 此时进程已经脱离Swift控制，只能监控运行
+        /// </summary>
+        /// <param name="task">Task.</param>
+        public void MointorRunTask(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            var isExecuteOK = BlockCheckTaskExecuteStatus(task, cancellationToken);
+            if (isExecuteOK)
+            {
+                task.UpdateTaskStatus(EnumTaskStatus.Completed, cancellationToken);
+                LogWriter.Write(string.Format("任务执行成功:{0},{1},{2}", Name, Id, task.Id));
+            }
+            else
+            {
+                task.UpdateTaskStatus(EnumTaskStatus.Failed, cancellationToken);
                 LogWriter.Write(string.Format("任务执行失败:{0},{1},{2}", Name, Id, task.Id));
             }
         }
@@ -639,28 +922,27 @@ namespace Swift.Core
         /// 拉取任务需求
         /// </summary>
         /// <param name="task"></param>
-        private void PullTaskRequirement(JobTask task)
+        private void PullTaskRequirement(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
         {
-            // task目录
-            var taskPath = Path.Combine(task.Job.CurrentJobSpacePath, "tasks", task.Id.ToString());
-            if (!Directory.Exists(taskPath))
-            {
-                Directory.CreateDirectory(taskPath);
-            }
+            // 写task配置
+            task.WriteConfig(cancellationToken);
 
-            // task配置
-            var taskJsonPath = Path.Combine(taskPath, "task.json");
-            if (!File.Exists(taskJsonPath))
-            {
-                task.WriteConfig();
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
-            // 需求文件
-            var taskRequirementPath = Path.Combine(taskPath, "requirement.txt");
+            // 下载需求文件
+            var taskPath = SwiftConfiguration.GetJobTaskRootPath(task.Job.Name, task.Job.Id, task.Id);
+            var taskRequirementPath = SwiftConfiguration.GetJobTaskRequirementPath(taskPath);
             if (!File.Exists(taskRequirementPath))
             {
                 Cluster.CurrentMember.Download(Cluster.Manager, "download/task/requirement",
-                    string.Format("Jobs/{0}/{1}/tasks/{2}/requirement.txt", task.Job.Name, task.Job.Id, task.Id));
+                    new Dictionary<string, string>
+                    {
+                        { "jobName", task.Job.Name },
+                        { "jobId", task.Job.Id },
+                        { "taskId", task.Id.ToString() },
+                    },
+                    cancellationToken
+                );
             }
         }
 
@@ -668,107 +950,82 @@ namespace Swift.Core
         /// 开始处理任务
         /// </summary>
         /// <param name="task"></param>
-        private void StartRunTask(JobTask task)
+        private void StartRunTask(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
         {
-            task.UpdateTaskStatus(EnumTaskStatus.Executing);
-            UpdateJobStatus(EnumJobRecordStatus.TaskExecuting);
+            task.UpdateTaskStatus(EnumTaskStatus.Executing, cancellationToken);
+            LogWriter.Write("已更新任务状态：" + task.BusinessId + "," + EnumTaskStatus.Executing, Log.LogLevel.Trace);
+
+            UpdateJobStatus(EnumJobRecordStatus.TaskExecuting, cancellationToken);
+            LogWriter.Write("已更新作业状态：" + task.Job.BusinessId + "," + EnumJobRecordStatus.TaskExecuting, Log.LogLevel.Trace);
         }
 
         /// <summary>
         /// 调用任务执行方法
         /// </summary>
-        public void CallTaskExecuteMethod(JobTask task)
+        public void CallTaskExecuteMethod(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
         {
-            try
+            // 当前任务文件夹
+            var currentTaskPath = SwiftConfiguration.GetJobTaskRootPath(CurrentJobSpacePath, task.Id);
+            var taskExecuteStatusPath = SwiftConfiguration.GetJobTaskExecuteStatusPath(currentTaskPath);
+
+            var actions = new SwiftProcessEventActions
             {
-                Process p = new Process();
-
-                string m_cmdLine = string.Format(" -p -t {0}", task.Id);
-                var currentJobStartFile = FileName; //默认直接可执行文件
-                var currentJobStartParas = m_cmdLine;
-
-                if (ExeType == "dotnet") // dotnet core
-                {
-                    currentJobStartFile = "dotnet";
-                    currentJobStartParas = " " + FileName + m_cmdLine;
-                }
-
-                // 当前作业文件夹
-                var currentTaskPath = Path.Combine(CurrentJobSpacePath, "tasks", task.Id.ToString());
-
-                p.StartInfo.WorkingDirectory = CurrentJobSpacePath;
-                p.StartInfo.FileName = currentJobStartFile;
-                p.StartInfo.Arguments = currentJobStartParas;
-                p.StartInfo.UseShellExecute = false;
-                //p.StartInfo.RedirectStandardInput = true;
-                p.StartInfo.RedirectStandardOutput = true;
-                p.StartInfo.RedirectStandardError = true;
-                p.StartInfo.CreateNoWindow = true;
-                p.EnableRaisingEvents = true;
-
-                p.OutputDataReceived += (s, e) =>
-                {
-                    var msg = e.Data;
-                    if (msg != null && e.Data.StartsWith("PerformTask", StringComparison.Ordinal))
-                    {
-                        if (msg.StartsWith("PerformTask:OK", StringComparison.Ordinal))
-                        {
-                            string physicalPath = Path.Combine(currentTaskPath, "taskexecute.status");
-                            File.WriteAllText(physicalPath, "0");
-                        }
-
-                        if (msg.StartsWith("PerformTask:Error", StringComparison.Ordinal))
-                        {
-                            string physicalPath = Path.Combine(currentTaskPath, "taskexecute.status");
-                            File.WriteAllText(physicalPath, "-1:" + msg);
-                        }
-
-                        //if (!p.HasExited)
-                        //{
-                        //    p.Close();
-                        //    p.Dispose();
-                        //}
-                    }
-                };
-
-                p.ErrorDataReceived += (s, e) =>
+                OutputAction = (s, e) =>
                 {
                     var msg = e.Data;
                     if (msg != null)
                     {
-                        string physicalPath = Path.Combine(currentTaskPath, "taskexecute.status");
-                        File.WriteAllText(physicalPath, "-1:" + msg);
-
-                        //if (!p.HasExited)
-                        //{
-                        //    p.Close();
-                        //    p.Dispose();
-                        //}
+                        LogWriter.Write(string.Format("{0} output: {1}", s.BusinessId, msg));
                     }
-                };
+                },
 
-                p.Exited += (s, e) =>
+                ErrorAction = (s, e) =>
+                {
+                    var msg = e.Data;
+                    if (msg != null)
+                    {
+                        try
+                        {
+                            File.WriteAllText(taskExecuteStatusPath, "-1:" + msg);
+                        }
+                        catch (Exception ex)
+                        {
+                            LogWriter.Write("write taskexecute.status with error go exception", ex);
+                        }
+
+                        LogWriter.Write(msg);
+                    }
+                },
+
+                ExitAction = (s, e) =>
                 {
                     try
                     {
-                        LogWriter.Write("任务执行进程退出:" + p.ExitCode);
+                        LogWriter.Write("execute task process exit:" + s.ExitCode);
                     }
                     catch (Exception ex)
                     {
-                        LogWriter.Write("任务执行进程退出处理失败:" + ex.Message);
+                        LogWriter.Write("get execute task process exit code go exception", ex);
                     }
-                };
 
-                p.Start();
-                p.BeginOutputReadLine();
-                p.BeginErrorReadLine();
-                p.WaitForExit();
-                p.Close();
-            }
-            catch (Exception ex)
-            {
-                LogWriter.Write(string.Format("CallTaskExecuteMethod异常:{0},{1}", ex.Message, ex.StackTrace));
-            }
+                    task.RemoveProcessFile();
+                },
+
+                TimeoutAction = (s, e) =>
+                {
+                    try
+                    {
+                        File.WriteAllText(taskExecuteStatusPath, "-1:task execute timeout");
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWriter.Write("write taskexecute.status with timeout go exception", ex);
+                    }
+                }
+            };
+
+            SwiftProcess process = new SwiftProcess("ExecuteTask", task, actions);
+            process.ExecuteTask(cancellationToken);
         }
 
         /// <summary>
@@ -777,9 +1034,13 @@ namespace Swift.Core
         /// <param name="task"></param>
         public void PerformTask(JobTask task)
         {
+            // 在进程内部记录进程Id，方便跟踪Swift启动的进程
+            var process = new SwiftProcess("ExecuteTask", task, Process.GetCurrentProcess());
+            task.CreateProcessFile();
+
             // 保存任务创建状态文件
-            string taskCreateStatusFilePath = Path.Combine(CurrentJobSpacePath, "tasks", task.Id.ToString(), "taskexecute.status");
-            File.WriteAllText(taskCreateStatusFilePath, "1");
+            string taskExecuteStatusFilePath = SwiftConfiguration.GetJobTaskExecuteStatusPath(CurrentJobSpacePath, task.Id);
+            File.WriteAllText(taskExecuteStatusFilePath, "1");
 
             try
             {
@@ -787,10 +1048,12 @@ namespace Swift.Core
                 task.Result = result;
                 task.WriteResult();
 
+                File.WriteAllText(taskExecuteStatusFilePath, "0");
                 Console.WriteLine("PerformTask:OK");
             }
             catch (System.Exception ex)
             {
+                File.WriteAllText(taskExecuteStatusFilePath, "-1:" + ex.Message);
                 Console.WriteLine("PerformTask:Error:" + ex.Message);
             }
         }
@@ -806,26 +1069,45 @@ namespace Swift.Core
         public abstract string ExecuteTask(JobTask task);
 
         /// <summary>
-        /// 阻塞检查任务执行状态
+        /// 阻塞检查任务执行状态，在进程脱离Swift控制情况下使用
         /// </summary>
         /// <param name="task"></param>
         /// <returns></returns>
-        private bool BlockCheckTaskExecuteStatus(JobTask task)
+        private bool BlockCheckTaskExecuteStatus(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
         {
             bool isOK = true;
 
             while (!CheckTaskExecuteStatus(task, out int errorCode, out string errorMessage))
             {
-                LogWriter.Write(errorMessage);
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    // 如果取消了，则跳出循环，执行进程Kill
+                    break;
+                }
 
+                LogWriter.Write(errorMessage, Log.LogLevel.Trace);
+
+                // 明确出错
                 if (errorCode == 4)
                 {
+                    LogWriter.Write(errorMessage);
+                    isOK = false;
+                    break;
+                }
+
+                // 超时运行
+                if (task.ExecuteTimeout * 60 < DateTime.Now.Subtract(task.StartTime).TotalSeconds)
+                {
+                    LogWriter.Write(string.Format("monitor task process timeout: {0}", task.BusinessId));
                     isOK = false;
                     break;
                 }
 
                 Thread.Sleep(3000);
             }
+
+            // 进一步确保进程被关闭:超时、资源未释放可能导致进程刮起等情况
+            task.KillProcess();
 
             return isOK;
         }
@@ -839,50 +1121,17 @@ namespace Swift.Core
         /// <returns></returns>
         private bool CheckTaskExecuteStatus(JobTask task, out int errorCode, out string errorMessage)
         {
-            errorCode = -1;
-            errorMessage = string.Empty;
+            var result = task.GetTaskExecuteStatus();
 
-            // 读取任务创建状态
-            string physicalPath = Path.Combine(CurrentJobSpacePath, "tasks", task.Id.ToString(), "taskexecute.status");
-            if (!File.Exists(physicalPath))
+            errorCode = result.ErrCode;
+            errorMessage = result.ErrMessage;
+
+            if (errorCode == 0)
             {
-                errorMessage = "任务执行等待中...";
-                errorCode = 1;
-                return false;
+                return true;
             }
 
-            var taskExecuteStatus = "";
-            try
-            {
-                taskExecuteStatus = File.ReadAllText(physicalPath);
-            }
-            catch (Exception ex)
-            {
-                errorMessage = "读取任务执行状态异常：" + ex.Message;
-                errorCode = 2;
-                return false;
-            }
-
-            // 正在写入
-            if (taskExecuteStatus == "1")
-            {
-                errorMessage = "任务执行中...";
-                errorCode = 3;
-                return false;
-            }
-
-            // 任务处理出错
-            if (taskExecuteStatus.StartsWith("-1"))
-            {
-                errorMessage = "任务执行出错：" + taskExecuteStatus;
-                errorCode = 4;
-                return false;
-            }
-
-            errorMessage = "任务执行完毕。";
-            errorCode = 0;
-
-            return true;
+            return false;
         }
         #endregion
 
@@ -890,8 +1139,11 @@ namespace Swift.Core
         /// <summary>
         /// 同步任务结果
         /// </summary>
-        public void SyncTaskResult()
+        /// <param name="cancellationToken">Cancellation token.</param>
+        public void SyncTaskResult(CancellationToken cancellationToken = default(CancellationToken))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var taskPlan = TaskPlan;
 
             if (taskPlan != null && taskPlan.Count > 0)
@@ -902,15 +1154,24 @@ namespace Swift.Core
 
                 foreach (var task in executeCompleteTasks)
                 {
+                    bool pullResult = false;
                     try
                     {
-                        PullTaskResult(task);
-                        task.UpdateTaskStatus(EnumTaskStatus.Synced);
+                        PullTaskResult(task, cancellationToken);
+                        pullResult = true;
                     }
                     catch (System.Exception ex)
                     {
-                        task.UpdateTaskStatus(EnumTaskStatus.SyncFailed);
-                        LogWriter.Write(string.Format("同步任务结果异常:{0}", ex.Message));
+                        LogWriter.Write(string.Format("同步任务结果异常:{0}", ex.Message), ex);
+                    }
+
+                    if (pullResult)
+                    {
+                        task.UpdateTaskStatus(EnumTaskStatus.Synced, cancellationToken);
+                    }
+                    else
+                    {
+                        task.UpdateTaskStatus(EnumTaskStatus.SyncFailed, cancellationToken);
                     }
                 }
             }
@@ -920,25 +1181,40 @@ namespace Swift.Core
         /// 拉取任务结果
         /// </summary>
         /// <param name="task"></param>
-        private void PullTaskResult(JobTask task)
+        private void PullTaskResult(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             // 任务所属成员
-            var memberId = TaskPlan.Where(d => d.Value.Where(t => t.Id == task.Id).Any()).Select(d => d.Key).FirstOrDefault();
-            var member = Cluster.Members.Where(d => d.Id == memberId).FirstOrDefault();
+            var memberId = TaskPlan.Where(d => d.Value.Any(t => t.Id == task.Id)).Select(d => d.Key).FirstOrDefault();
+            var member = Cluster.Members.FirstOrDefault(d => d.Id == memberId);
             if (member == null)
             {
                 throw new MemberNotFoundException(string.Format("成员[{0}]不存在，无法拉取任务结果。", memberId));
             }
 
+            // worker变为管理员
+            if (member.Id == Cluster.CurrentMember.Id)
+            {
+                throw new MemberNotFoundException(string.Format("成员[{0}]自己完成的任务，不用拉取。", memberId));
+            }
+
             // 下载任务结果
             Cluster.CurrentMember.Download(member, "download/task/result",
-                string.Format("Jobs/{0}/{1}/tasks/{2}/result.txt", task.Job.Name, task.Job.Id, task.Id));
+                new Dictionary<string, string>
+                {
+                    { "jobName", task.Job.Name },
+                    { "jobId", task.Job.Id },
+                    { "taskId", task.Id.ToString() },
+                },
+                cancellationToken
+            );
         }
 
         /// <summary>
         /// 检查任务运行状态
         /// </summary>
-        public void CheckTaskRunStatus()
+        public void CheckTaskRunStatus(CancellationToken cancellationToken = default(CancellationToken))
         {
             if (TaskPlan == null)
             {
@@ -946,41 +1222,56 @@ namespace Swift.Core
                 return;
             }
             var taskCount = TaskPlan.SelectMany(d => d.Value).Count();
-            var executeCompleteTaskCount = TaskPlan.SelectMany(d => d.Value.Where(t => t.Status == EnumTaskStatus.Completed)).Count();
-            var SyncCompleteTaskCount = TaskPlan.SelectMany(d => d.Value.Where(t => t.Status == EnumTaskStatus.Synced)).Count();
 
-            if (taskCount == SyncCompleteTaskCount)
+            var executeCompleteTaskCount = TaskPlan.SelectMany(d => d.Value.Where(t =>
+             t.Status == EnumTaskStatus.Completed
+             || t.Status == EnumTaskStatus.Synced
+             || t.Status == EnumTaskStatus.SyncFailed)).Count();
+
+            var syncedTaskCount = TaskPlan.SelectMany(d => d.Value.Where(t => t.Status == EnumTaskStatus.Synced)).Count();
+            var canceledTaskCount = TaskPlan.SelectMany(d => d.Value.Where(t => t.Status == EnumTaskStatus.Canceled)).Count();
+
+            if (taskCount == syncedTaskCount)
             {
-                UpdateJobStatus(EnumJobRecordStatus.TaskSynced);
+                UpdateJobStatus(EnumJobRecordStatus.TaskSynced, cancellationToken);
             }
             else if (taskCount == executeCompleteTaskCount)
             {
-                UpdateJobStatus(EnumJobRecordStatus.TaskCompleted);
+                UpdateJobStatus(EnumJobRecordStatus.TaskCompleted, cancellationToken);
+            }
+            else if (taskCount == canceledTaskCount)
+            {
+                UpdateJobStatus(EnumJobRecordStatus.Canceled, cancellationToken);
             }
         }
 
         /// <summary>
         /// 合并任务处理结果
         /// </summary>
-        public void MergeTaskResult()
+        /// <param name="cancellationToken">Cancellation token.</param>
+        public void MergeTaskResult(CancellationToken cancellationToken = default(CancellationToken))
         {
-            // 保存任务合并状态文件
-            string taskCreateStatusFilePath = Path.Combine(CurrentJobSpacePath, "taskmerge.status");
-            File.WriteAllText(taskCreateStatusFilePath, "1");
+            // 更新作业状态为TaskMerging
+            UpdateJobStatus(EnumJobRecordStatus.TaskMerging, cancellationToken);
 
-            CallTaskCollectMethod();
+            // 保存任务合并状态文件
+            string taskCreateStatusFilePath = SwiftConfiguration.GetJobTaskMergeStatusPath(CurrentJobSpacePath);
+            File.WriteAllTextAsync(taskCreateStatusFilePath, "1", cancellationToken).Wait();
+
+            CallCollectTaskResultMethod(cancellationToken);
 
             // 阻塞并检查任务结果合并进度
-            bool isMergeOK = BlockCheckTaskResultMergeStatus();
+            bool isMergeOK = CheckCollectTaskResultStatus(out int errorCode, out string errorMessage);
+            LogWriter.Write(errorMessage);
 
             if (isMergeOK)
             {
-                UpdateJobStatus(EnumJobRecordStatus.TaskMerged);
+                UpdateJobStatus(EnumJobRecordStatus.TaskMerged, cancellationToken);
                 LogWriter.Write(string.Format("任务合并成功:{0},{1}", Name, Id));
             }
             else
             {
-                UpdateJobStatus(EnumJobRecordStatus.TaskMergeFailed);
+                UpdateJobStatus(EnumJobRecordStatus.TaskMergeFailed, cancellationToken);
                 LogWriter.Write(string.Format("任务合并失败:{0},{1}", Name, Id));
             }
         }
@@ -990,6 +1281,13 @@ namespace Swift.Core
         /// </summary>
         public void CollectTaskResults()
         {
+            var taskMergeStatusPath = SwiftConfiguration.GetJobTaskMergeStatusPath(CurrentJobSpacePath);
+            string jobResultPath = SwiftConfiguration.GetJobResultPath(CurrentJobSpacePath);
+            string jobZipResultPath = SwiftConfiguration.GetJobResultPackagePath(CurrentJobSpacePath);
+
+            // 在进程内部记录进程Id，方便跟踪Swift启动的进程
+            CreateProcessFile("CollectTaskResult", Process.GetCurrentProcess().Id);
+
             try
             {
                 var tasks = TaskPlan.SelectMany(d => d.Value);
@@ -1000,17 +1298,42 @@ namespace Swift.Core
                 LogWriter.Write("已经准备好要合并的任务");
 
                 string result = Collect(tasks);
-                LogWriter.Write("已经汇集完毕任务结果");
+                LogWriter.Write("任务结果合并已经计算完毕");
 
-                string jobResultPath = Path.Combine(CurrentJobSpacePath, "result.txt");
                 File.WriteAllText(jobResultPath, result);
-                LogWriter.Write("已经汇集完毕任务结果");
+                LogWriter.Write("已经将任务结果写入文件");
 
+                using (var zip = ZipFile.Open(jobZipResultPath, ZipArchiveMode.Create))
+                {
+                    zip.CreateEntryFromFile(jobResultPath, "result.txt");
+                }
+                LogWriter.Write("已经打包作业结果");
+
+                File.WriteAllText(taskMergeStatusPath, "0");
                 Console.WriteLine("CollectTaskResults:OK");
             }
             catch (Exception ex)
             {
+                File.WriteAllText(taskMergeStatusPath, "-1:" + ex.Message);
                 Console.WriteLine("CollectTaskResults:Error:" + ex.Message + ex.StackTrace);
+            }
+        }
+
+        /// <summary>
+        /// 此时进程已经脱离Swift控制，只能监控运行
+        /// </summary>
+        public void MointorRunCollectTaskResult(CancellationToken cancellationToken = default(CancellationToken))
+        {
+            var isExecuteOK = BlockCheckCollectTaskResultStatus(cancellationToken);
+            if (isExecuteOK)
+            {
+                UpdateJobStatus(EnumJobRecordStatus.TaskMerged, cancellationToken);
+                LogWriter.Write(string.Format("任务合并执行成功:{0}", BusinessId));
+            }
+            else
+            {
+                UpdateJobStatus(EnumJobRecordStatus.TaskMergeFailed, cancellationToken);
+                LogWriter.Write(string.Format("任务合并执行失败:{0}", BusinessId));
             }
         }
 
@@ -1018,25 +1341,41 @@ namespace Swift.Core
         /// 阻塞检查任务结果合并状态
         /// </summary>
         /// <returns></returns>
-        private bool BlockCheckTaskResultMergeStatus()
+        private bool BlockCheckCollectTaskResultStatus(CancellationToken cancellationToken = default(CancellationToken))
         {
-            bool taskOK = true;
-            int unMergeReason;
-            string unMergeReasonDesc;
-            while (!CheckTaskMergeResultStatus(out unMergeReason, out unMergeReasonDesc))
-            {
-                LogWriter.Write(unMergeReasonDesc);
+            bool isOK = true;
 
-                if (unMergeReason == 4)
+            while (!CheckCollectTaskResultStatus(out int errorCode, out string errorMessage))
+            {
+                if (cancellationToken.IsCancellationRequested)
                 {
-                    taskOK = false;
+                    break;
+                }
+
+                LogWriter.Write(errorMessage, Log.LogLevel.Trace);
+
+                // 明确出错
+                if (errorCode == 4 || errorCode == 2)
+                {
+                    LogWriter.Write(errorMessage);
+                    isOK = false;
+                    break;
+                }
+
+                // 超时运行
+                if (TaskResultCollectTimeout * 60 < DateTime.Now.Subtract(CollectTaskResultStartTime).TotalSeconds)
+                {
+                    LogWriter.Write(string.Format("monitor collect task result process timeout: {0}", this.BusinessId));
+                    isOK = false;
                     break;
                 }
 
                 Thread.Sleep(3000);
             }
 
-            return taskOK;
+            KillCollectTaskResultProcess();
+
+            return isOK;
         }
 
         /// <summary>
@@ -1044,18 +1383,36 @@ namespace Swift.Core
         /// </summary>
         /// <param name="errorCode">1尚未创建合并状态，2不能读取任务合并状态，3任务合并中，4任务合并出错</param>
         /// <returns></returns>
-        private bool CheckTaskMergeResultStatus(out int errorCode, out string errorMessage)
+        private bool CheckCollectTaskResultStatus(out int errorCode, out string errorMessage)
         {
-            errorCode = -1;
-            errorMessage = string.Empty;
+            var result = GetCollectTaskResultStatus();
 
+            errorCode = result.ErrCode;
+            errorMessage = result.ErrMessage;
+
+            if (errorCode == 0)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 获取任务结果合并状态
+        /// </summary>
+        /// <returns>The collect task result status.</returns>
+        public CommonResult GetCollectTaskResultStatus()
+        {
             // 读取任务合并状态
-            string physicalPath = Path.Combine(CurrentJobSpacePath, "taskmerge.status");
+            string physicalPath = SwiftConfiguration.GetJobTaskMergeStatusPath(CurrentJobSpacePath);
             if (!File.Exists(physicalPath))
             {
-                errorMessage = "任务合并等待中...";
-                errorCode = 1;
-                return false;
+                return new CommonResult()
+                {
+                    ErrCode = 1,
+                    ErrMessage = "任务合并等待中...",
+                };
             }
 
             var taskMergeStatus = "";
@@ -1065,133 +1422,102 @@ namespace Swift.Core
             }
             catch (Exception ex)
             {
-                errorMessage = "读取任务创建状态异常：" + ex.Message;
-                errorCode = 2;
-                return false;
+                return new CommonResult()
+                {
+                    ErrCode = 2,
+                    ErrMessage = "读取任务合并状态异常：" + ex.Message,
+                };
             }
 
             // 正在合并
             if (taskMergeStatus == "1")
             {
-                errorMessage = "任务合并中...";
-                errorCode = 3;
-                return false;
+                return new CommonResult()
+                {
+                    ErrCode = 3,
+                    ErrMessage = "任务合并中...",
+                };
             }
 
             // 任务处理出错
             if (taskMergeStatus.StartsWith("-1", StringComparison.Ordinal))
             {
-                errorMessage = "创建合并出错：" + taskMergeStatus;
-                errorCode = 4;
-                return false;
+                return new CommonResult()
+                {
+                    ErrCode = 4,
+                    ErrMessage = "创建合并出错：" + taskMergeStatus
+                };
             }
 
-            errorMessage = "任务合并完毕。";
-            errorCode = 0;
-
-            return true;
+            return new CommonResult()
+            {
+                ErrCode = 0,
+                ErrMessage = "任务合并完毕。"
+            };
         }
 
         /// <summary>
         /// 调用任务合并方法，由Manager调用此方法
         /// </summary>
-        public void CallTaskCollectMethod()
+        public void CallCollectTaskResultMethod(CancellationToken cancellationToken = default(CancellationToken))
         {
-            try
+            var taskMergeStatusPath = SwiftConfiguration.GetJobTaskMergeStatusPath(CurrentJobSpacePath);
+
+            var actions = new SwiftProcessEventActions
             {
-                Process p = new Process();
-
-                // 当前作业文件夹
-                string m_cmdLine = string.Format(" -m");
-                var currentJobStartFile = FileName; //默认直接可执行文件
-                var currentJobStartParas = m_cmdLine;
-
-                if (ExeType == "dotnet") // dotnet core
-                {
-                    currentJobStartFile = "dotnet";
-                    currentJobStartParas = " " + FileName + m_cmdLine;
-                }
-
-                p.StartInfo.WorkingDirectory = CurrentJobSpacePath;
-                p.StartInfo.FileName = currentJobStartFile;
-                p.StartInfo.Arguments = currentJobStartParas;
-                p.StartInfo.UseShellExecute = false;
-                //p.StartInfo.RedirectStandardInput = true;
-                p.StartInfo.RedirectStandardOutput = true;
-                p.StartInfo.RedirectStandardError = true;
-                p.StartInfo.CreateNoWindow = true;
-                p.EnableRaisingEvents = true;
-
-                p.OutputDataReceived += (s, e) =>
+                OutputAction = (s, e) =>
                 {
                     var msg = e.Data;
                     if (msg != null)
                     {
-                        if (msg.StartsWith("CollectTaskResults", StringComparison.Ordinal))
-                        {
-                            if (msg.StartsWith("CollectTaskResults:OK", StringComparison.Ordinal))
-                            {
-                                string physicalPath = Path.Combine(CurrentJobSpacePath, "taskmerge.status");
-                                File.WriteAllText(physicalPath, "0");
-                            }
-
-                            if (msg.StartsWith("CollectTaskResults:Error", StringComparison.Ordinal))
-                            {
-                                string physicalPath = Path.Combine(CurrentJobSpacePath, "taskmerge.status");
-                                File.WriteAllText(physicalPath, "-1:" + msg);
-                            }
-
-                            //if (!p.HasExited)
-                            //{
-                            //    p.Close();
-                            //    p.Dispose();
-                            //}
-                        }
-                        else
-                        {
-                            LogWriter.Write(msg);
-                        }
+                        LogWriter.Write(string.Format("{0} output: {1}", s.BusinessId, msg));
                     }
-                };
+                },
 
-                p.ErrorDataReceived += (s, e) =>
+                ErrorAction = (s, e) =>
                 {
                     var msg = e.Data;
                     if (msg != null)
                     {
-                        string physicalPath = Path.Combine(CurrentJobSpacePath, "taskmerge.status");
-                        File.WriteAllText(physicalPath, "-1:" + msg);
+                        try
+                        {
+                            File.WriteAllText(taskMergeStatusPath, "-1:" + msg);
+                        }
+                        catch (Exception ex)
+                        {
+                            LogWriter.Write("write taskmerge.status with error go exception", ex);
+                        }
 
-                        //if (!p.HasExited)
-                        //{
-                        //    p.Close();
-                        //    p.Dispose();
-                        //}
+                        LogWriter.Write(msg);
                     }
-                };
+                },
 
-                p.Exited += (s, e) =>
+                ExitAction = (s, e) =>
                 {
                     try
                     {
-                        LogWriter.Write("任务执行进程退出:" + p.ExitCode);
+                        LogWriter.Write("merge task process exit:" + s.ExitCode);
                     }
                     catch (Exception ex)
                     {
-                        LogWriter.Write("任务执行进程退出处理失败:" + ex.Message);
+                        LogWriter.Write("get merge task process exit code go exception", ex);
                     }
-                };
+                },
+                TimeoutAction = (s, e) =>
+                {
+                    try
+                    {
+                        File.WriteAllText(taskMergeStatusPath, "-1:task merge timeout");
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWriter.Write("write taskmerge.status with timeout go exception", ex);
+                    }
+                }
+            };
 
-                p.Start();
-                p.BeginOutputReadLine();
-                p.BeginErrorReadLine();
-                p.WaitForExit();
-                p.Close();
-            }
-            catch (Exception ex)
-            {
-                LogWriter.Write(string.Format("CallTaskCollectMethod异常:{0},{1}", ex.Message, ex.StackTrace));
-            }
+            SwiftProcess process = new SwiftProcess("CollectTaskResult", this, actions);
+            process.CollectTaskResult(cancellationToken);
         }
 
         /// <summary>
@@ -1202,66 +1528,46 @@ namespace Swift.Core
         public abstract string Collect(IEnumerable<JobTask> tasks);
         #endregion
 
+        #region 作业配置处理
         /// <summary>
         /// 更新作业状态
         /// </summary>
         /// <param name="status"></param>
-        private bool UpdateJobStatus(EnumJobRecordStatus status)
+        public void UpdateJobStatus(EnumJobRecordStatus status, CancellationToken cancellationToken = default(CancellationToken))
         {
-            bool result = true;
-            KVPair jobRecordKV;
-            int updateTimes = 0;
+            var ccJobRecord = Cluster.ConfigCenter.UpdateJobStatus(this, status, cancellationToken);
+            LogWriter.Write(string.Format("更新作业记录状态结果:{0}", ccJobRecord != null));
 
-            do
+            if (ccJobRecord != null)
             {
-                updateTimes++;
-                Log.LogWriter.Write("UpdateJobStatus Execute Times:" + updateTimes, Log.LogLevel.Info);
+                this.Status = ccJobRecord.Status;
+            }
+        }
 
-                Thread.Sleep(200);
-
-                var jobRecordKey = string.Format("Swift/{0}/Jobs/{1}/Records/{2}", Cluster.Name, Name, Id);
-                jobRecordKV = ConsulKV.Get(jobRecordKey);
-
-                var jobRecordJson = Encoding.UTF8.GetString(jobRecordKV.Value);
-                Log.LogWriter.Write("UpdateJobStatus Get Value[" + jobRecordKV.ModifyIndex + "]" + jobRecordJson, Log.LogLevel.Trace);
-
-                var jobRecord = JsonConvert.DeserializeObject<JobWrapper>(jobRecordJson);
-                if (jobRecord == null)
-                {
-                    Log.LogWriter.Write(string.Format("正在更新作业状态，但是作业已不存在: {0}", jobRecordKey), Log.LogLevel.Error);
-                    result = false;
-                    break;
-                }
-
-                jobRecord.ModifyIndex = jobRecordKV.ModifyIndex;
-                jobRecord.Status = status;
-
-                // 如果是任务计划制定完毕，则附上计划
-                if (status == EnumJobRecordStatus.PlanMaked)
-                {
-                    jobRecord.TaskPlan = this.TaskPlan;
-                }
-
-                // 将作业信息更新到本地
-                this.UpdateFrom(jobRecord);
-
-                jobRecordJson = JsonConvert.SerializeObject(jobRecord);
-                Log.LogWriter.Write("UpdateTaskStatus CAS Value[" + jobRecordKV.ModifyIndex + "]" + jobRecordJson, Log.LogLevel.Trace);
-
-                jobRecordKV.Value = Encoding.UTF8.GetBytes(jobRecordJson);
-            } while (!ConsulKV.CAS(jobRecordKV)); // 可能同时更新作业记录配置，所以这里用CAS
-
-            return result;
+        /// <summary>
+        /// 更新作业任务计划
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        private void UpdateJobTaskPlan(CancellationToken cancellationToken = default(CancellationToken))
+        {
+            var ccJobRecord = Cluster.ConfigCenter.UpdateJobTaskPlan(this, cancellationToken);
+            LogWriter.Write(string.Format("更新作业记录状态结果:{0}", ccJobRecord != null));
+            if (ccJobRecord != null)
+            {
+                this.Status = ccJobRecord.Status;
+            }
         }
 
         /// <summary>
         /// 加载作业的任务
         /// </summary>
-        public List<JobTask> LoadTasksFromFile()
+        public List<JobTask> LoadTasksFromFile(CancellationToken cancellationToken = default(CancellationToken))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var taskList = new List<JobTask>();
 
-            var taskPath = Path.Combine(CurrentJobSpacePath, "tasks");
+            var taskPath = SwiftConfiguration.GetJobAllTaskRootPath(CurrentJobSpacePath);
 
             // 读取任务
             if (!Directory.Exists(taskPath))
@@ -1275,8 +1581,8 @@ namespace Swift.Core
             {
                 foreach (var taskDir in taskDirectories)
                 {
-                    var taskJsonPath = Path.Combine(taskDir, "task.json");
-                    var taskJson = File.ReadAllText(taskJsonPath);
+                    var taskJsonPath = SwiftConfiguration.GetJobTaskConfigPath(taskDir);
+                    var taskJson = File.ReadAllTextAsync(taskJsonPath, cancellationToken).Result;
                     var task = JsonConvert.DeserializeObject<JobTask>(taskJson);
                     task.Job = (JobWrapper)this;
 
@@ -1288,58 +1594,167 @@ namespace Swift.Core
         }
 
         /// <summary>
-        /// 读取为字节数组
+        /// 写作业空间配置
         /// </summary>
-        /// <returns></returns>
-        public byte[] ReadFile()
+        private void WriteJobSpaceConfig(CancellationToken cancellationToken = default(CancellationToken))
         {
-            if (FileBytes == null)
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // 保存当前作业配置
+            var jobConfigJson = JsonConvert.SerializeObject(this);
+            string currentJobConfigFilePath = SwiftConfiguration.GetJobRecordConfigPath(CurrentJobSpacePath);
+            File.WriteAllTextAsync(currentJobConfigFilePath, jobConfigJson, cancellationToken).Wait();
+        }
+        #endregion
+
+        #region 进程处理
+        /// <summary>
+        /// 创建进程文件
+        /// </summary>
+        private void CreateProcessFile(string method, int processId)
+        {
+            var processDirPath = SwiftConfiguration.AllSwiftProcessRootPath;
+            if (!Directory.Exists(processDirPath))
             {
-                string physicalPath = Path.Combine(JobRootPath, Name + ".zip");
-                FileBytes = ReadFile(physicalPath);
+                Directory.CreateDirectory(processDirPath);
             }
 
-            return FileBytes;
+            var processFilePath = SwiftConfiguration.GetSwiftProcessPath(method, BusinessId);
+            File.WriteAllText(processFilePath, processId.ToString());
         }
 
         /// <summary>
-        /// 读取文件到字节数组
+        /// Hases the related process.
         /// </summary>
-        /// <param name="fileUrl"></param>
-        /// <returns></returns>
-        private byte[] ReadFile(string fileUrl)
+        /// <returns><c>true</c>, if related process was hased, <c>false</c> otherwise.</returns>
+        public bool HasRelatedProcess
         {
-            FileStream fs = new FileStream(fileUrl, FileMode.Open, FileAccess.Read);
+            get
+            {
+                if (_jobProcessDictionary.Count > 0)
+                {
+                    return true;
+                }
+
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 杀死所有相关进程
+        /// </summary>
+        public void KillRelatedProcess()
+        {
+            KillJobSplitProcess();
+            KillCollectTaskResultProcess();
+        }
+
+        /// <summary>
+        /// 杀死作业分割进程
+        /// </summary>
+        public void KillJobSplitProcess()
+        {
+            if (_jobProcessDictionary.TryGetValue("SplitJob", out SwiftProcess process))
+            {
+                LogWriter.Write(string.Format("尝试杀死进程：{0},{1}", BusinessId, "SplitJob"));
+                KillProcess(process);
+
+                _jobProcessDictionary.TryRemove("SplitJob", out process);
+            }
+        }
+
+        /// <summary>
+        /// 杀死作业任务合并进程
+        /// </summary>
+        public void KillCollectTaskResultProcess()
+        {
+            if (_jobProcessDictionary.TryGetValue("CollectTaskResult", out SwiftProcess process))
+            {
+                LogWriter.Write(string.Format("尝试杀死进程：{0},{1}", BusinessId, "CollectTaskResult"));
+                KillProcess(process);
+
+                _jobProcessDictionary.TryRemove("CollectTaskResult", out process);
+            }
+        }
+
+        /// <summary>
+        /// 杀死关连的计算机进程
+        /// </summary>
+        private void KillProcess(SwiftProcess process)
+        {
+            if (process == null)
+            {
+                LogWriter.Write("进程实例不存在，认为进程未启动", Log.LogLevel.Warn);
+                return;
+            }
+
+            if (process.IsExist)
+            {
+                LogWriter.Write("进程实例已关闭", Log.LogLevel.Warn);
+                RemoveProcessFile(process);
+                return;
+            }
+
+            var hasExited = process.HasExited;
+            if (hasExited)
+            {
+                LogWriter.Write("进程已经退出");
+                RemoveProcessFile(process);
+                return;
+            }
+
             try
             {
-                byte[] buffur = new byte[fs.Length];
-                fs.Read(buffur, 0, (int)fs.Length);
+                process.Kill();
+                LogWriter.Write("进程已执行Kill");
 
-                return buffur;
+                process.WaitForExit();
+                RemoveProcessFile(process);
             }
             catch (Exception ex)
             {
-                Console.WriteLine(string.Format("{0} 读取作业文件异常:{1}", DateTime.Now.ToString(), ex.Message));
-                return null;
-            }
-            finally
-            {
-                if (fs != null)
-                {
-                    fs.Close();
-                }
+                LogWriter.Write("Kill任务的进程时异常，请检查任务是否还在运行", ex);
             }
         }
 
         /// <summary>
-        /// 写作业空间配置
+        /// 移除进程文件
         /// </summary>
-        private void WriteJobSpaceConfig()
+        private void RemoveProcessFile(SwiftProcess process)
         {
-            // 保存当前作业配置
-            var jobConfigJson = JsonConvert.SerializeObject(this);
-            string currentJobConfigFilePath = Path.Combine(CurrentJobSpacePath, "job.json");
-            File.WriteAllText(currentJobConfigFilePath, jobConfigJson);
+            try
+            {
+                var processFilePath = process.IdFilePath;
+                if (string.IsNullOrWhiteSpace(processFilePath))
+                {
+                    LogWriter.Write("remove process file find it not executed: " + processFilePath);
+                    return;
+                }
+
+                File.Delete(processFilePath);
+                LogWriter.Write("has remove process file");
+            }
+            catch (Exception ex)
+            {
+                LogWriter.Write("remove process file go exception", ex);
+            }
         }
+
+        /// <summary>
+        /// 获取进程Id
+        /// </summary>
+        /// <returns>The process identifier.</returns>
+        public int GetProcessId(string method)
+        {
+            int processId = -1;
+            var processFilePath = SwiftConfiguration.GetSwiftProcessPath(method, BusinessId);
+            if (File.Exists(processFilePath))
+            {
+                processId = int.Parse(File.ReadAllText(processFilePath));
+            }
+
+            return processId;
+        }
+        #endregion
     }
 }

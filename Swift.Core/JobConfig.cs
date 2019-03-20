@@ -20,9 +20,9 @@ namespace Swift.Core
         public string LastRecordId { get; set; }
 
         /// <summary>
-        /// 最后一次记录运行开始时间
+        /// 最后一次记录创建时间
         /// </summary>
-        public DateTime? LastRecordStartTime { get; set; }
+        public DateTime? LastRecordCreateTime { get; set; }
 
         /// <summary>
         /// 使用作业包的文件最后更新时间
@@ -64,7 +64,33 @@ namespace Swift.Core
         /// <summary>
         /// 运行时间
         /// </summary>
+        [JsonIgnore]
         public PlanRunTime[] RunTimes { get; set; }
+
+        /// <summary>
+        /// Swift成员不可用的时间阈值，单位分钟，默认10。
+        /// 如果已经分配任务的成员连续不可用超过此时间，则将此成员的任务重新分配给其它正常成员。
+        /// </summary>
+        /// <value>The re make task plan.</value>
+        public int MemberUnavailableThreshold { get; set; }
+
+        /// <summary>
+        /// 单个任务执行超时时间，单位分钟，默认1440
+        /// </summary>
+        /// <value>The task execute timeout.</value>
+        public int TaskExecuteTimeout { get; set; }
+
+        /// <summary>
+        /// 作业分割执行超时时间，单位分钟，默认120
+        /// </summary>
+        /// <value>The task execute timeout.</value>
+        public int JobSplitTimeout { get; set; }
+
+        /// <summary>
+        /// 任务结果合并执行超时时间，单位分钟，默认120
+        /// </summary>
+        /// <value>The task execute timeout.</value>
+        public int TaskResultCollectTimeout { get; set; }
 
         /// <summary>
         /// 修改索引
@@ -111,7 +137,7 @@ namespace Swift.Core
             }
 
             LastRecordId = jobConfig.LastRecordId;
-            LastRecordStartTime = jobConfig.LastRecordStartTime;
+            LastRecordCreateTime = jobConfig.LastRecordCreateTime;
             Name = jobConfig.Name;
             FileName = jobConfig.FileName;
             ExeType = jobConfig.ExeType;
@@ -119,6 +145,10 @@ namespace Swift.Core
             RunTimePlan = jobConfig.RunTimePlan;
             RunTimes = jobConfig.RunTimes;
             Version = jobConfig.Version;
+            MemberUnavailableThreshold = jobConfig.MemberUnavailableThreshold;
+            TaskExecuteTimeout = jobConfig.TaskExecuteTimeout;
+            JobSplitTimeout = jobConfig.JobSplitTimeout;
+            TaskResultCollectTimeout = jobConfig.TaskResultCollectTimeout;
         }
 
         /// <summary>
@@ -158,6 +188,27 @@ namespace Swift.Core
                     }
                     jobConfig.RunTimes = runTimeList.ToArray();
                 }
+
+                if (jobConfig.TaskExecuteTimeout == 0)
+                {
+                    jobConfig.TaskExecuteTimeout = 1440;
+                }
+
+                if (jobConfig.JobSplitTimeout == 0)
+                {
+                    jobConfig.JobSplitTimeout = 120;
+                }
+
+                if (jobConfig.TaskResultCollectTimeout == 0)
+                {
+                    jobConfig.TaskResultCollectTimeout = 120;
+                }
+
+                if (jobConfig.MemberUnavailableThreshold == 0)
+                {
+                    jobConfig.MemberUnavailableThreshold = 10;
+                    ;
+                }
             }
             catch (Exception ex)
             {
@@ -171,11 +222,11 @@ namespace Swift.Core
         /// 从其他实例复制相关字段的值
         /// </summary>
         /// <param name="config"></param>
-        public void UpdateFrom(JobConfig config)
+        public void CopyFieldFrom(JobConfig config)
         {
             Name = config.Name;
             LastRecordId = config.LastRecordId;
-            LastRecordStartTime = config.LastRecordStartTime;
+            LastRecordCreateTime = config.LastRecordCreateTime;
             Name = config.Name;
             FileName = config.FileName;
             ExeType = config.ExeType;
@@ -183,6 +234,10 @@ namespace Swift.Core
             RunTimePlan = config.RunTimePlan;
             RunTimes = config.RunTimes;
             Version = config.Version;
+            MemberUnavailableThreshold = config.MemberUnavailableThreshold;
+            TaskExecuteTimeout = config.TaskExecuteTimeout;
+            JobSplitTimeout = config.JobSplitTimeout;
+            TaskResultCollectTimeout = config.TaskResultCollectTimeout;
         }
     }
 }

@@ -28,13 +28,21 @@ namespace Swift.Core
         /// </summary>
         Synced = 3,
         /// <summary>
+        /// 正在取消
+        /// </summary>
+        Canceling = 4,
+        /// <summary>
+        /// 已取消
+        /// </summary>
+        Canceled = 5,
+        /// <summary>
         /// 失败
         /// </summary>
         Failed = -1,
         /// <summary>
-        /// 取消
+        /// 取消失败
         /// </summary>
-        Canceled = -2,
+        CancelFailed = -2,
         /// <summary>
         /// 同步任务结果失败
         /// </summary>

@@ -5,7 +5,9 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.NetworkInformation;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 
@@ -22,7 +24,7 @@ namespace Swift.Core
     /// </summary>
     /// <param name="msgType"></param>
     /// <param name="data"></param>
-    public delegate void ReceiveWebResponseEvent(string msgType, Dictionary<string, string> paras, byte[] data);
+    public delegate void ReceiveWebResponseEvent(string msgType, Dictionary<string, string> paras, byte[] data, CancellationToken cancellationToken);
 
     /// <summary>
     /// 成员通信器
@@ -106,8 +108,10 @@ namespace Swift.Core
         /// </summary>
         /// <param name="member"></param>
         /// <param name="msgType"></param>
-        public void Download(Member member, string msgType, Dictionary<string, string> paras)
+        public void Download(Member member, string msgType, Dictionary<string, string> paras, CancellationToken cancellationToken = default(CancellationToken))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var paraStr = string.Empty;
             if (paras != null && paras.Count > 0)
             {
@@ -122,10 +126,43 @@ namespace Swift.Core
 
             LogWriter.Write("通信路径：" + url);
 
-            WebClient client = new WebClient();
-            var result = client.DownloadData(url);
+            int tryTimes = 2;
+            while (tryTimes > 0)
+            {
+                try
+                {
+                    WebClient client = new WebClient();
+                    var downloadTask = client.DownloadDataTaskAsync(new Uri(url));
+                    byte[] result;
 
-            OnReceiveWebResponseHandler?.Invoke(msgType, paras, result);
+                    using (cancellationToken.Register(client.CancelAsync))
+                    {
+                        result = downloadTask.Result;
+                    }
+
+                    // 也许注释掉的方法更好
+                    //while (!downloadTask.Wait(TimeSpan.FromSeconds(0.2)))
+                    //{
+                    //    cancellationToken.ThrowIfCancellationRequested();
+                    //}
+                    //result = downloadTask.Result;
+
+                    OnReceiveWebResponseHandler?.Invoke(msgType, paras, result, cancellationToken);
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    tryTimes--;
+                    if (tryTimes <= 0)
+                    {
+                        LogWriter.Write("下载文件处理异常", ex);
+                        throw;
+                    }
+
+                    LogWriter.Write("下载文件处理异常", ex, LogLevel.Warn);
+
+                }
+            }
         }
 
         /// <summary>
@@ -164,6 +201,30 @@ namespace Swift.Core
                 writer.Close();
                 context.Response.Close();
             }
+        }
+
+        /// <summary>
+        /// 检查端口是否在使用
+        /// </summary>
+        /// <returns><c>true</c>, if port in use was checked, <c>false</c> otherwise.</returns>
+        /// <param name="port">Port.</param>
+        public static bool CheckPortInUse(int port)
+        {
+            bool inUse = false;
+
+            IPGlobalProperties ipProperties = IPGlobalProperties.GetIPGlobalProperties();
+            IPEndPoint[] ipEndPoints = ipProperties.GetActiveTcpListeners();
+
+            foreach (IPEndPoint endPoint in ipEndPoints)
+            {
+                if (endPoint.Port == port)
+                {
+                    inUse = true;
+                    break;
+                }
+            }
+
+            return inUse;
         }
     }
 }

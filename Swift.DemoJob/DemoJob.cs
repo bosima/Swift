@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Swift.DemoJob
@@ -32,6 +33,7 @@ namespace Swift.DemoJob
                         subLength = input.Length - i * perTaskCharNos;
                     }
 
+                    // 需求只需要时字符串，格式自己定义
                     string requirement = input.Substring(i * perTaskCharNos, subLength);
                     var task = new JobTask()
                     {
@@ -55,6 +57,7 @@ namespace Swift.DemoJob
         {
             Dictionary<char, int> stat = new Dictionary<char, int>();
 
+            // 使用自己定义的需求
             var requirement = task.Requirement;
             if (requirement != null)
             {
@@ -71,6 +74,11 @@ namespace Swift.DemoJob
                 }
             }
 
+            // 测试超时的处理
+            Thread.Sleep(1 * 60 * 1000);
+
+            // 如果任务结果文件比较大，比如300M，会导致网速和内存占用较大，请考虑写到别的地方去，这里返回个实际结果的地址就行了
+            // 返回字符串的格式自定义即可
             return JsonConvert.SerializeObject(stat);
         }
 
@@ -84,6 +92,7 @@ namespace Swift.DemoJob
 
             foreach (var task in tasks)
             {
+                // 自定义的任务结果字符串
                 var taskResult = task.Result;
                 if (!string.IsNullOrWhiteSpace(taskResult))
                 {
@@ -103,6 +112,8 @@ namespace Swift.DemoJob
                 }
             }
 
+            // 如果结果太大，比如超过1G，写文件可能会很慢，请考虑写到别的地方去，这里返回个实际结果的地址就行了
+            // 返回字符串的格式自定义即可
             return JsonConvert.SerializeObject(stat);
         }
     }

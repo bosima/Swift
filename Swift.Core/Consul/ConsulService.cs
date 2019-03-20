@@ -14,28 +14,30 @@ namespace Swift.Core.Consul
     /// </summary>
     public static class ConsulService
     {
+        private static ConsulClient client = new ConsulClient();
+
         /// <summary>
         /// 获取服务所有节点的健康状态
         /// </summary>
         /// <returns>The healths.</returns>
         /// <param name="serviceName">Service name.</param>
-        public static Dictionary<string,bool> GetHealths(string serviceName)
+        public static Dictionary<string, bool> GetHealths(string serviceName, CancellationToken cancellationToken = default(CancellationToken))
         {
             Dictionary<string, bool> healths = new Dictionary<string, bool>();
 
-            using (var client = new ConsulClient())
+            var checks = Retry(() =>
             {
-                var checks = client.Health.Checks(serviceName).Result;
-                
-                if (checks.Response != null || checks.Response.Length > 0)
+                return client.Health.Checks(serviceName, cancellationToken).Result;
+            }, 2);
+
+            if (checks.Response != null || checks.Response.Length > 0)
+            {
+                var serviceCheckGroup = checks.Response.GroupBy(d => d.ServiceID);
+                foreach (var serviceChecks in serviceCheckGroup)
                 {
-                    var serviceCheckGroup = checks.Response.GroupBy(d => d.ServiceID);
-                    foreach(var serviceChecks in serviceCheckGroup)
-                    {
-                        var serviceId = serviceChecks.Key;
-                        var serviceStatus = !serviceChecks.Any(d => d.Status != HealthStatus.Passing);
-                        healths.Add(serviceId, serviceStatus);
-                    }
+                    var serviceId = serviceChecks.Key;
+                    var serviceStatus = !serviceChecks.Any(d => d.Status != HealthStatus.Passing);
+                    healths.Add(serviceId, serviceStatus);
                 }
             }
 
@@ -48,11 +50,11 @@ namespace Swift.Core.Consul
         /// <returns></returns>
         public static void PassTTL(string serviceId)
         {
-            using (var client = new ConsulClient())
+            Retry(() =>
             {
                 var checkId = "CHECK:" + serviceId;
                 client.Agent.PassTTL(checkId, "Alive").Wait();
-            }
+            }, 2);
         }
 
         /// <summary>
@@ -61,13 +63,14 @@ namespace Swift.Core.Consul
         /// <param name="serviceId"></param>
         public static bool DeregisterService(string serviceId)
         {
-            using (var client = new ConsulClient())
+            var deRegResult = Retry(() =>
             {
-                var deRegResult = client.Agent.ServiceDeregister(serviceId).Result;
-                if (deRegResult.StatusCode != System.Net.HttpStatusCode.OK)
-                {
-                    return false;
-                }
+                return client.Agent.ServiceDeregister(serviceId).Result;
+            }, 2);
+
+            if (deRegResult.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                return false;
             }
 
             return true;
@@ -80,13 +83,14 @@ namespace Swift.Core.Consul
         /// <returns></returns>
         public static bool DeregisterServiceCheck(string checkId)
         {
-            using (var client = new ConsulClient())
+            var deRegResult = Retry(() =>
             {
-                var deRegResult = client.Agent.CheckDeregister(checkId).Result;
-                if (deRegResult.StatusCode != System.Net.HttpStatusCode.OK)
-                {
-                    return false;
-                }
+                return client.Agent.CheckDeregister(checkId).Result;
+            }, 2);
+
+            if (deRegResult.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                return false;
             }
 
             return true;
@@ -101,25 +105,34 @@ namespace Swift.Core.Consul
         /// <returns></returns>
         public static void RegisterService(string serviceId, string serviceName, int ttl)
         {
-            using (var client = new ConsulClient())
+            var deRegResult = Retry(() =>
             {
-                var deRegResult = client.Agent.ServiceDeregister(serviceId).Result;
-                if (deRegResult.StatusCode != System.Net.HttpStatusCode.OK)
-                {
-                    throw new Exception("Swift Member注册前注销服务失败，返回值：" + deRegResult.StatusCode);
-                }
+                return client.Agent.ServiceDeregister(serviceId).Result;
+            }, 2);
 
-                var regResult = client.Agent.ServiceRegister(new AgentServiceRegistration()
+            if (deRegResult.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                throw new Exception("Swift Member注册前注销服务失败，返回值：" + deRegResult.StatusCode);
+            }
+
+            var regResult = Retry(() =>
+            {
+                return client.Agent.ServiceRegister(new AgentServiceRegistration()
                 {
                     ID = serviceId,
                     Name = serviceName
                 }).Result;
-                if (regResult.StatusCode != System.Net.HttpStatusCode.OK)
-                {
-                    throw new Exception("Swift Member注册失败，返回值：" + regResult.StatusCode);
-                }
 
-                var regCheckResult = client.Agent.CheckRegister(new AgentCheckRegistration()
+            }, 2);
+
+            if (regResult.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                throw new Exception("Swift Member注册失败，返回值：" + regResult.StatusCode);
+            }
+
+            var regCheckResult = Retry(() =>
+            {
+                return client.Agent.CheckRegister(new AgentCheckRegistration()
                 {
                     ID = "CHECK:" + serviceId,
                     Name = "CHECK " + serviceId,
@@ -129,31 +142,83 @@ namespace Swift.Core.Consul
                     Status = HealthStatus.Warning,
                     TTL = new TimeSpan(0, 0, ttl)
                 }).Result;
+            }, 2);
 
-                if (regCheckResult.StatusCode != System.Net.HttpStatusCode.OK)
-                {
-                    throw new Exception("Swift Member健康检查注册失败，返回值：" + regCheckResult.StatusCode);
-                }
-
-                var ttlPassThread = new Thread(new ThreadStart(() =>
-                {
-                    while (true)
-                    {
-                        try
-                        {
-                            PassTTL(serviceId);
-                            Thread.Sleep(4000);
-                        }
-                        catch (Exception ex)
-                        {
-                            LogWriter.Write(string.Format("Consul PassTTL异常:{0}", ex.Message + ex.StackTrace));
-                            Thread.Sleep(1000);
-                        }
-                    }
-                }));
-
-                ttlPassThread.Start();
+            if (regCheckResult.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                throw new Exception("Swift Member健康检查注册失败，返回值：" + regCheckResult.StatusCode);
             }
+
+            var ttlPassThread = new Thread(new ThreadStart(() =>
+            {
+                while (true)
+                {
+                    try
+                    {
+                        PassTTL(serviceId);
+                        Thread.Sleep(4000);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWriter.Write(string.Format("Consul PassTTL异常:{0}", ex.Message + ex.StackTrace));
+                        Thread.Sleep(1000);
+                    }
+                }
+            }));
+
+            ttlPassThread.Start();
+        }
+
+        private static void Retry(Action action, int retryTimes)
+        {
+            int i = retryTimes;
+            while (i > 0)
+            {
+                try
+                {
+                    action();
+                }
+                catch (AggregateException ex)
+                {
+                    LogWriter.Write("执行ConsulService操作异常。", ex);
+
+                    i--;
+
+                    if (i == 0)
+                    {
+                        throw;
+                    }
+
+                    Thread.Sleep(1000);
+                }
+            }
+        }
+
+        private static T Retry<T>(Func<T> func, int retryTimes)
+        {
+            int i = retryTimes;
+            while (i > 0)
+            {
+                try
+                {
+                    return func();
+                }
+                catch (AggregateException ex)
+                {
+                    LogWriter.Write("执行ConsulService操作异常。", ex);
+
+                    i--;
+
+                    if (i == 0)
+                    {
+                        throw;
+                    }
+
+                    Thread.Sleep(1000);
+                }
+            }
+
+            return default(T);
         }
     }
 }

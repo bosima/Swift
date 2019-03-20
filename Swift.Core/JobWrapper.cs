@@ -26,6 +26,10 @@ namespace Swift.Core
                 Status = job.Status;
                 Version = job.Version;
                 ModifyIndex = job.ModifyIndex;
+                TaskExecuteTimeout = job.TaskExecuteTimeout;
+                JobSplitTimeout = job.JobSplitTimeout;
+                TaskResultCollectTimeout = job.TaskResultCollectTimeout;
+                MemberUnavailableThreshold = job.MemberUnavailableThreshold;
             }
         }
 
@@ -74,6 +78,10 @@ namespace Swift.Core
             t.CreateTime = this.CreateTime;
             t.ModifyIndex = this.ModifyIndex;
             t.Version = this.Version;
+            t.TaskExecuteTimeout = this.TaskExecuteTimeout;
+            t.JobSplitTimeout = this.JobSplitTimeout;
+            t.TaskResultCollectTimeout = this.TaskResultCollectTimeout;
+            t.MemberUnavailableThreshold = this.MemberUnavailableThreshold;
             return t;
         }
     }

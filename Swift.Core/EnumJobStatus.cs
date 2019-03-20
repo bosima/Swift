@@ -42,9 +42,24 @@ namespace Swift.Core
         TaskSynced = 5,
 
         /// <summary>
-        /// 任务合并完毕
+        /// 任务合并中
         /// </summary>
-        TaskMerged = 6,
+        TaskMerging = 6,
+
+        /// <summary>
+        /// 任务合并完毕，作业成功结束
+        /// </summary>
+        TaskMerged = 7,
+
+        /// <summary>
+        /// 正在取消
+        /// </summary>
+        Canceling = 8,
+
+        /// <summary>
+        /// 已取消
+        /// </summary>
+        Canceled = 9,
 
         /// <summary>
         /// 制定计划失败
@@ -60,5 +75,10 @@ namespace Swift.Core
         /// 任务合并失败
         /// </summary>
         TaskMergeFailed = -3,
+
+        /// <summary>
+        /// 取消失败
+        /// </summary>
+        CancelFailed = -4,
     }
 }

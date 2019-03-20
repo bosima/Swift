@@ -13,6 +13,29 @@
   </ItemGroup>
   <ItemGroup>
     <Content Remove="Views\Shared\_CookieConsentPartial.cshtml" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.pt-BR.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.da.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.hy.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.ja.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.bg.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.he.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.ka.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.az.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.id.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.el.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.ko.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.sl.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.is.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.pt.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.pl.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.lv.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.fi.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.th.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.hr.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.ms.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.no.js" />
+    <Content Remove="wwwroot\lib\bootstrap-datetimepicker\js\locales\bootstrap-datetimepicker.ru.js" />
+    <Content Remove="wwwroot\js\bootstrap-datetimepicker.zh-CN.js" />
   </ItemGroup>
   <ItemGroup>
     <None Remove="Dockerfile" />

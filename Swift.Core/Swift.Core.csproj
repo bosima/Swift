@@ -13,5 +13,12 @@
         <PackageReference Include="Consul" Version="0.7.2.6" />
         <PackageReference Include="Newtonsoft.Json" Version="12.0.1" />
         <PackageReference Include="NLog" Version="4.5.11" />
+        <PackageReference Include="Microsoft.Windows.Compatibility" Version="2.0.1" />
+    </ItemGroup>
+    <ItemGroup>
+      <Folder Include="OS\" />
+      <Folder Include="OS\Linux\" />
+      <Folder Include="OS\Windows\" />
+      <Folder Include="OS\OSX\" />
     </ItemGroup>
 </Project>

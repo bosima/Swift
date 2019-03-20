@@ -26,7 +26,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-fileinput/4.4.9/js/locales/zh.js"></script>
     <script type="text/javascript">
     $("#jobPkgFile").fileinput({
-            uploadUrl:"/Job/Upload",//上传的地址
+            uploadUrl:"/Job/UploadPackage",//上传的地址
             uploadAsync: true,
             language : "zh",//设置语言
             showCaption: true,//是否显示标题
@@ -52,14 +52,41 @@
         window.location.reload();
     });
 
-     $("#btnUploadPkgFile").click(function(){
+   $("#btnUploadPkgFile").click(function(){
         $('#jobPkgFile').fileinput('upload');
-     });
+   });
+
+  $('#jobOperatorResultModal').on('hide.bs.modal', function () {
+        window.location.reload();
+  });
+
+   function RunJob(clusterName,jobName){
+        $.ajax({
+            url: "@Url.Action("Run","Job")",
+            type:"GET",
+            dataType:"json",
+            data:{"clusterName":clusterName,"jobName":jobName},
+            success: function(data,textStatus){
+                if(data.errCode==0){
+                        $("#jobOperatorResultModal .modal-title").text("提交成功");
+                        $("#jobOperatorResultModal .modal-body").text("任务已经创建，将很快启动运行。");
+                        $('#jobOperatorResultModal').modal({ keyboard: false });
+                }else{
+                        $("#jobOperatorResultModal .modal-title").text("提交失败");
+                        $("#jobOperatorResultModal .modal-body").text(data.errMessage);
+                        $('#jobOperatorResultModal').modal({ keyboard: false });
+                }
+            },
+            error:function(XMLHttpRequest, textStatus, errorThrown){
+                alert("提交失败");
+            }
+        });
+    }
     </script>
 }
 
 <p>
-    <a class="btn btn-info" href="javascript:history.back()">返回</a>
+    <a class="btn btn-info" href="@Url.Action("Index","Home")">返回</a>
     <a class="btn btn-info" href="javascript:location.reload()">刷新</a>
 </p>
 
@@ -68,9 +95,9 @@
     <p><input id="jobPkgFile" name="jobPkgFile" class="flie" type="file"></p>
     <p class="text-right"><button id="btnUploadPkgFile" type="button" class="btn btn-primary">上传并发布</button></p>
     @*<div class="row">
-        <div class="col-md-9"></div>
-        <div class="col-md-3 vertical-center"></div>
-    </div>*@
+            <div class="col-md-9"></div>
+            <div class="col-md-3 vertical-center"></div>
+        </div>*@
 </div>
 @*
     // TODO:增加清空执行时间操作，以关闭作业运行
@@ -85,47 +112,65 @@
                 当前版本
             </th>
             <th>
-                可执行文件名称
+                执行文件类型
             </th>
             <th>
-                定时执行时间
+                作业类
             </th>
             <th>
-                最新执行Id
+                执行计划
             </th>
             <th>
-                最新执行启动时间
+                最近执行时间
             </th>
             <th>
-                历史记录
+                操作
             </th>
         </tr>
 
         @foreach (var item in Model)
         {
-            <tr>
-                <td>
-                    @Html.DisplayFor(modelItem => item.Name)
-                </td>
-                <td>
-                    @Html.DisplayFor(modelItem => item.Version)
-                </td>
-                <td>
-                    @Html.DisplayFor(modelItem => item.FileName)
-                </td>
-                <td>
-                    @string.Join(",", item.RunTimePlan)
-                </td>
-                <td>
-                    @Html.DisplayFor(modelItem => item.LastRecordId)
-                </td>
-                <td>
-                    @(item.LastRecordStartTime.HasValue?item.LastRecordStartTime.Value.ToString("yyyy-MM-dd HH:mm:ss"):string.Empty)
-                </td>
-                <td>
-                    @Html.ActionLink("查看", "JobRecords", new { job = item.Name, cluster = ViewBag.ClusterName })
-                </td>
-            </tr>
+        <tr>
+            <td>
+                @Html.DisplayFor(modelItem => item.Name)
+            </td>
+            <td>
+                @Html.DisplayFor(modelItem => item.Version)
+            </td>
+            <td>
+                @Html.DisplayFor(modelItem => item.ExeType)
+            </td>
+            <td>
+                @Html.DisplayFor(modelItem => item.JobClassName)
+            </td>
+            <td>
+                @string.Join(",", item.RunTimePlan)
+            </td>
+            <td>
+                @(item.LastRecordCreateTime.HasValue ? item.LastRecordCreateTime.Value.ToString("yyyy-MM-dd HH:mm:ss") : string.Empty)
+            </td>
+            <td>
+                @Html.ActionLink("查看", "JobRecords", new { job = item.Name, cluster = ViewBag.ClusterName })
+                <a href="javascript:RunJob('@ViewBag.ClusterName','@item.Name')">立即运行</a>
+            </td>
+        </tr>
         }
     </table>
+</div>
+
+<div class="modal fade" id="jobOperatorResultModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+                <h4 class="modal-title" id="myModalLabel"></h4>
+            </div>
+            <div class="modal-body">
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
 </div>

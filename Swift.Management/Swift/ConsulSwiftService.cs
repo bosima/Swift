@@ -14,18 +14,52 @@ using Swift.Core.ExtensionException;
 
 namespace Swift.Management.Swift
 {
-    public class SwiftService : ISwiftService
+    public class ConsulSwiftService : BaseSwiftService, ISwiftService
     {
+        /// <summary>
+        /// Gets the last day job records.
+        /// </summary>
+        /// <returns>The last day job records.</returns>
+        /// <param name="clusterName">Cluster name.</param>
+        /// <param name="jobName">Job name.</param>
+        /// <param name="date">Date.</param>
+        public List<JobBase> GetJobRecords(string clusterName, string jobName, DateTime? date)
+        {
+            // 如果没有指定日期则从配置中心获取最后一次作业记录时间，默认显示这一天的作业记录
+            if (!date.HasValue)
+            {
+                var jobConfigKey = string.Format("Swift/{0}/Jobs/{1}/Config", clusterName, jobName);
+                var configKV = ConsulKV.Get(jobConfigKey);
+                if (configKV != null && configKV.Value != null)
+                {
+                    JobConfig jobConfig = JsonConvert.DeserializeObject<JobConfig>(Encoding.UTF8.GetString(configKV.Value));
+                    date = jobConfig.LastRecordCreateTime;
+                }
+            }
+
+            // 如果还是没有日期，则认为作业从来都没有运行过
+            if (!date.HasValue)
+            {
+                return null;
+            }
+
+            return GetSpecifiedDayJobRecords(clusterName, jobName, date.Value);
+        }
+
         /// <summary>
         /// 获取所有作业记录
         /// </summary>
         /// <param name="clusterName"></param>
         /// <param name="job"></param>
         /// <returns></returns>
-        public List<JobBase> GetJobRecords(string clusterName, string job)
+        private List<JobBase> GetSpecifiedDayJobRecords(string clusterName, string job, DateTime date)
         {
+            string year = date.ToString("yyyy");
+            string month = date.ToString("MM");
+            string day = date.ToString("dd");
+
             List<JobBase> jobRecordList = new List<JobBase>();
-            var jobRecordKeyPrefix = string.Format("Swift/{0}/Jobs/{1}/Records", clusterName, job);
+            var jobRecordKeyPrefix = string.Format("Swift/{0}/Jobs/{1}/Records/{2}/{3}/{4}", clusterName, job, year, month, day);
             var jobRecordKeys = ConsulKV.Keys(jobRecordKeyPrefix);
 
             if (jobRecordKeys != null && jobRecordKeys.Length > 0)
@@ -48,7 +82,7 @@ namespace Swift.Management.Swift
         /// </summary>
         /// <param name="clusterName"></param>
         /// <returns></returns>
-        public List<JobConfig> GetJobs(string clusterName)
+        public List<JobConfig> GetJobConfigs(string clusterName)
         {
             List<JobConfig> newJobConfigs = new List<JobConfig>();
 
@@ -94,9 +128,26 @@ namespace Swift.Management.Swift
         }
 
         /// <summary>
+        /// 从Consul获取Manager
+        /// </summary>
+        public override Member GetManager(string clusterName)
+        {
+            var managerKey = string.Format("/Swift/{0}/Manager", clusterName);
+            var manager = ConsulKV.Get(managerKey);
+            if (manager == null || string.IsNullOrWhiteSpace(manager.Session))
+            {
+                return null;
+            }
+
+            var managerId = Encoding.UTF8.GetString(manager.Value);
+
+            return GetMembers(clusterName).FirstOrDefault(d => d.Id == managerId);
+        }
+
+        /// <summary>
         /// 从Consul加载集群成员
         /// </summary>
-        public List<Member> GetMembers(string clusterName)
+        public override List<Member> GetMembers(string clusterName)
         {
             var memberKey = string.Format("Swift/{0}/Members", clusterName);
             KVPair memberKV = ConsulKV.Get(memberKey);
@@ -129,75 +180,44 @@ namespace Swift.Management.Swift
         /// </summary>
         /// <returns><c>true</c>, if job was published, <c>false</c> otherwise.</returns>
         /// <param name="file">form file</param>
-        public bool PublishJob(string clusterName, FormFile file)
+        public new bool PublishJobPackage(string clusterName, FormFile file)
         {
-            // 获取当前Manager
-            List<Member> members = GetMembers(clusterName);
-            var manager = members.FirstOrDefault(d => d.Role == EnumMemberRole.Manager && d.Status == 1);
-            if (manager == null)
-            {
-                throw new Exception("没有发现在线的Manager");
-            }
+            return base.PublishJobPackage(clusterName, file);
+        }
 
-            #region 检查作业包
+        /// <summary>
+        /// Downloads the job result.
+        /// </summary>
+        /// <returns>The job result.</returns>
+        /// <param name="clusterName">Cluster name.</param>
+        /// <param name="jobName">Job name.</param>
+        /// <param name="jobId">Job identifier.</param>
+        public new byte[] DownloadJobResult(string clusterName, string jobName, string jobId)
+        {
+            return base.DownloadJobResult(clusterName, jobName, jobId);
+        }
 
-            // 先保存作业包
-            string pkgName = file.FileName;
-            string jobName = pkgName.Substring(0, pkgName.LastIndexOf('.'));
-            string uploadJobPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "uploadjobs");
-            if (!Directory.Exists(uploadJobPath))
-            {
-                Directory.CreateDirectory(uploadJobPath);
-            }
+        /// <summary>
+        /// Run the specified clusterName and jobName.
+        /// </summary>
+        /// <returns>The run.</returns>
+        /// <param name="clusterName">Cluster name.</param>
+        /// <param name="jobName">Job name.</param>
+        public new bool Run(string clusterName, string jobName)
+        {
+            return base.Run(clusterName, jobName);
+        }
 
-            var pkgPath = Path.Combine(uploadJobPath, pkgName);
-            using (var stream = new FileStream(pkgPath, FileMode.Create))
-            {
-                file.CopyTo(stream);
-            }
-
-            // 然后解压作业包
-            string jobPath = Path.Combine(uploadJobPath, jobName);
-            if (Directory.Exists(jobPath))
-            {
-                // 作业包目录删除重建，以保证文件都是最新的
-                Directory.Delete(jobPath, true);
-                Directory.CreateDirectory(jobPath);
-            }
-
-            using (var zip = ZipFile.Open(pkgPath, ZipArchiveMode.Read))
-            {
-                zip.ExtractToDirectory(jobPath);
-            }
-
-            // 读取配置文件
-            var jobConfigPath = Path.Combine(jobPath, "job.json");
-            var jobConfig = new JobConfig(jobConfigPath);
-
-            if (string.IsNullOrWhiteSpace(jobConfig.Name)
-            || string.IsNullOrWhiteSpace(jobConfig.FileName)
-            || string.IsNullOrWhiteSpace(jobConfig.JobClassName)
-            || jobConfig.RunTimePlan.Length <= 0)
-            {
-                throw new Exception("作业配置项缺失，请检查作业名称、可执行文件名称、作业入口类、运行时间计划。");
-            }
-
-            var exePath = Path.Combine(jobPath, jobConfig.FileName);
-            if (!File.Exists(exePath))
-            {
-                throw new Exception("作业配置指定的可执行文件不存在。");
-            }
-
-            // TODO:如果有正在执行则不能上传发布，先标记为发布状态，发布状态不能运行作业
-
-            #endregion
-
-            // 上传到Manager
-            string url = string.Format("{0}upload/job/package?fileName=Jobs/{1}", manager.CommunicationAddress, pkgName);
-            WebClient client = new WebClient();
-            client.UploadData(url, File.ReadAllBytes(pkgPath));
-
-            return true;
+        /// <summary>
+        /// Cancel the specified job record
+        /// </summary>
+        /// <returns>The cancel.</returns>
+        /// <param name="clusterName">Cluster name.</param>
+        /// <param name="jobName">Job name.</param>
+        /// <param name="jobId">Job identifier.</param>
+        public new bool Cancel(string clusterName, string jobName, string jobId)
+        {
+            return base.Cancel(clusterName, jobName, jobId);
         }
     }
 }

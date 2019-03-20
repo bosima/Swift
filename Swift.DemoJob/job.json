@@ -1,6 +1,9 @@
 ﻿{
   "Name": "DemoJob",
-  "FileName": "Swift.DemoJob.exe",
-  "JobClassName": "Swift.DemoJob.DemoJob",
-  "RunTimePlan": [ "2018-4-19 18:25" ]
+  "FileName": "Swift.JobEntryPoint.dll",
+  "ExeType": "dotnet",
+  "JobClassName": "Swift.DemoJob.dll,Swift.DemoJob.DemoJob",
+  "RunTimePlan": [ "10m" ],
+  "TaskExecuteTimeout": 9,
+  "MemberUnavailableThreshold": 5
 }

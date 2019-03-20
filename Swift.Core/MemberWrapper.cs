@@ -23,23 +23,8 @@ namespace Swift.Core
                 FirstRegisterTime = this.FirstRegisterTime;
                 OfflineTime = this.OfflineTime;
                 OnlineTime = this.OnlineTime;
-                Role = this.Role;
                 Status = this.Status;
             }
-        }
-
-        /// <summary>
-        /// 开始处理
-        /// </summary>
-        protected override void Start()
-        {
-        }
-
-        /// <summary>
-        /// 停止处理
-        /// </summary>
-        protected override void Stop()
-        {
         }
 
         /// <summary>
@@ -54,7 +39,6 @@ namespace Swift.Core
             t.FirstRegisterTime = this.FirstRegisterTime;
             t.OfflineTime = this.OfflineTime;
             t.OnlineTime = this.OnlineTime;
-            t.Role = this.Role;
             t.Status = this.Status;
             return t;
         }

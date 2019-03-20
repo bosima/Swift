@@ -31,6 +31,7 @@ namespace Swift.Management.Controllers
 
         public IActionResult Members(string cluster)
         {
+            ViewBag.Manager = _swift.GetManager(cluster);
             ViewBag.ClusterName = cluster;
             var members = _swift.GetMembers(cluster);
             return View(members);
@@ -39,16 +40,43 @@ namespace Swift.Management.Controllers
         public IActionResult Jobs(string cluster)
         {
             ViewBag.ClusterName = cluster;
-            var jobConfigs = _swift.GetJobs(cluster);
+            var jobConfigs = _swift.GetJobConfigs(cluster);
             return View(jobConfigs);
         }
 
-        public IActionResult JobRecords(string cluster, string job)
+        public IActionResult JobRecords(string cluster, string job, DateTime? date)
         {
             ViewBag.ClusterName = cluster;
             ViewBag.JobName = job;
-            var jobRecordss = _swift.GetJobRecords(cluster, job);
+            var jobRecordss = _swift.GetJobRecords(cluster, job, date);
+
+            if (date.HasValue)
+            {
+                ViewBag.SpecifiedDate = date.Value.ToString("yyyy-MM-dd");
+            }
+            else
+            {
+                if (jobRecordss.Count > 0)
+                {
+                    ViewBag.SpecifiedDate = jobRecordss[0].CreateTime.ToString("yyyy-MM-dd");
+                }
+            }
+
             return View(jobRecordss);
+        }
+
+        public IActionResult RestartManagerElection(string cluster)
+        {
+            try
+            {
+                _swift.RestartManagerElection(cluster);
+            }
+            catch (Exception ex)
+            {
+                return new ObjectResult(new { errCode = 1, errMessage = ex.Message });
+            }
+
+            return new ObjectResult(new { errCode = 0 });
         }
 
         public IActionResult About()

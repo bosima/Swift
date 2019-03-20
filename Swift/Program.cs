@@ -21,14 +21,16 @@ namespace Swift
             var paras = ResolveArguments(args);
 
             // 检查参数错误
-            //ShowMessage("开始参数检查...");
             List<string> errorMessages = CheckArgumentsError(paras);
-            ShowMessage(errorMessages, true);
+            if (errorMessages != null && errorMessages.Count > 0)
+            {
+                ShowMessage(errorMessages);
+                Environment.Exit(1);
+            }
+
             ShowMessage("参数检查通过。");
 
             // 加载集群配置
-            //ShowMessage("开始加载集群配置...");
-
             string bindingIP = string.Empty;
             if (paras.ContainsKey("-b"))
             {
@@ -39,28 +41,12 @@ namespace Swift
             cluster.Init();
             ShowMessage("集群配置加载完毕。");
 
-            // 获取当前成员Id
-            var currentMemberId = cluster.LocalIP;
-
-            // 当前成员角色处理
-            var memberRole = paras["-r"];
-            Member currentMember = null;
-            if (memberRole == "manager")
-            {
-                //ShowMessage("准备注册为Manager...");
-                currentMember = cluster.RegisterManager(currentMemberId);
-                ShowMessage("已注册为Manager...");
-            }
-            else if (memberRole == "worker")
-            {
-                //ShowMessage("准备注册为Worker...");
-                currentMember = cluster.RegisterWorker(currentMemberId);
-                ShowMessage("已注册为Worker...");
-            }
+            var currentMember = cluster.RegisterMember(cluster.LocalIP);
+            ShowMessage("已注册到配置中心。");
 
             if (currentMember == null)
             {
-                ShowMessage("注册失败", true);
+                ShowMessage("注册失败。", true);
             }
 
             currentMember.Open();
@@ -105,7 +91,7 @@ namespace Swift
             {
                 foreach (var msg in messages)
                 {
-                    
+
                     Console.WriteLine(string.Format("{0} {1}", DateTime.Now.ToString(), msg));
                 }
 
@@ -126,14 +112,16 @@ namespace Swift
         private static List<string> CheckArgumentsError(Dictionary<string, string> paras)
         {
             List<string> errorMessages = new List<string>();
-            if (!paras.ContainsKey("-r"))
-            {
-                errorMessages.Add(ProcessError(1));
-            }
 
             if (!paras.ContainsKey("-c"))
             {
                 errorMessages.Add(ProcessError(2));
+            }
+
+            // TODO: 以后可以让用户自定义端口
+            if (MemberCommunicator.CheckPortInUse(9631))
+            {
+                errorMessages.Add(ProcessError(3));
             }
 
             return errorMessages;
@@ -149,11 +137,11 @@ namespace Swift
 
             switch (errorCode)
             {
-                case 1:
-                    errorMessage = "未指定成员角色，无法启动。";
-                    break;
                 case 2:
                     errorMessage = "未指定集群，无法启动。";
+                    break;
+                case 3:
+                    errorMessage = "端口9631被占用了。";
                     break;
             }
 
