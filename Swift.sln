@@ -15,8 +15,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{8D45B2
 	ProjectSection(SolutionItems) = preProject
 		Dockerfile = Dockerfile
 		.dockerignore = .dockerignore
-		docker-entrypoint.sh = docker-entrypoint.sh
 		Todo.txt = Todo.txt
+		docker-entrypoint.sh = docker-entrypoint.sh
+		sources.list = sources.list
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Swift.JobEntryPoint", "Swift.JobEntryPoint\Swift.JobEntryPoint.csproj", "{62AB4559-ADB4-4268-833F-F7FB0FB54F34}"

@@ -189,9 +189,12 @@ namespace Swift.Core
         /// <param name="status"></param>
         public void UpdateTaskStatus(EnumTaskStatus status, CancellationToken cancellationToken = default(CancellationToken))
         {
-            // TODO:将底层Get和CAS操作暴露为接口，以让底层开发更简单，在这里进行CAS不成功的逻辑处理
-            var ccJobRecord = Job.Cluster.ConfigCenter.UpdateTaskStatus(this, status, cancellationToken);
-            Status = status;
+            var result = Job.Cluster.ConfigCenter.TryUpdateTaskStatus(this, status, out int errCode, out JobBase latestJob, cancellationToken);
+
+            if (errCode == 0 || errCode == 2)
+            {
+                Status = status;
+            }
         }
 
         #region 关连的计算机进程

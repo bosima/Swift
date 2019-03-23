@@ -1,32 +1,27 @@
-﻿#!/bin/bash
-# Swift cluster name\Swift member role、is consul bootstrap mode、consul join ip
+#!/bin/bash
+
 cluster=''
-role=''
-consulboot=false
+consulboot=0
 consuljoinip=''
 
-# parameters
 until [ -z "$1" ]
 do
-    IFS='=' read -r -a argarray <<< "$1"
+    IFS='=' read -ra argarray <<< "$1"
     if [ "${argarray[0]}" == '-cluster' ]; then
         cluster="${argarray[1]}"
     fi
-    if [ "${argarray[0]}" == '-role' ]; then
-        role="${argarray[1]}"
-    fi
     if [ "${argarray[0]}" == '-consulboot' ]; then
-        consulboot=true
+        consulboot=1
     fi
     if [ "${argarray[0]}" == '-consuljoinip' ]; then
         consuljoinip="${argarray[1]}"
     fi
-   
     shift
 done
 
-[[ "${cluster}"=='' ]] && echo "Need Swift Cluster Name" && exit 1
-[[ "${role}"=='' ]] && echo "Need Swift Member Role" && exit 1
+if [ ! -n "$cluster" ]; then
+    echo "Need Swift Cluster Name" && exit 1
+fi
 
 #consul
 CONSUL_DATA_DIR="/app/consul/data"
@@ -56,7 +51,7 @@ if [ -n "$CONSUL_CLIENT_INTERFACE" ]; then
 fi
 
 CONSUL_BOOT=
-if  [ "${consulboot}"=='true' ]; then
+if  [ "${consulboot}"=='1' ]; then
     CONSUL_BOOT="-bootstrap -server"
 fi
 
@@ -65,15 +60,17 @@ if  [ -n "${consuljoinip}" ]; then
     CONSUL_JOIN="-retry-join "${consuljoinip}""
 fi
 
-#consulcmd="consul agent ${CONSUL_BIND} ${CONSUL_CLIENT} -data-dir=${CONSUL_DATA_DIR} ${CONSUL_JOIN} ${CONSUL_BOOT}"
-#exec "${consulcmd}"
-consul agent ${CONSUL_BIND} ${CONSUL_CLIENT} -data-dir=${CONSUL_DATA_DIR} ${CONSUL_JOIN} ${CONSUL_BOOT}
+nohup consul agent ${CONSUL_BIND} ${CONSUL_CLIENT} -data-dir=${CONSUL_DATA_DIR} ${CONSUL_JOIN} ${CONSUL_BOOT} > /app/consul/log.txt 2>&1 &
+sleep 15s
+echo "consul has started"
 
-#swift
-#swiftcmd="dotnet /app/swift/Swift.dll -c ${cluster} -r ${role}"
-#exec "${swiftcmd}"
-dotnet /app/swift/Swift.dll -c ${cluster} -r ${role}
+cd /app/management/
+nohup dotnet /app/management/Swift.Management.dll --urls "http://0.0.0.0:9632" 2> /app/swift/error.txt > /dev/null &
+echo "management has started"
 
-#swiftmanagementcmd="dotnet /app/management/Swift.Management.dll --server.urls \"http://localhost:9632\""
-#exec "${swiftmanagementcmd}"
-dotnet /app/management/Swift.Management.dll --server.urls "http://localhost:9632"
+nohup dotnet /app/swift/Swift.dll -c ${cluster} 2> /app/swift/error.txt > /dev/null &
+echo "swift has started"
+
+# https://github.com/vearne/graceful_docker/blob/master/entrypoint.sh
+
+while true; do echo hello world; sleep 3; done

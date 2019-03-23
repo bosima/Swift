@@ -175,7 +175,7 @@ namespace Swift.Core
                         break;
                     }
 
-                    Thread.Sleep(3000);
+                    Thread.Sleep(9000);
                 }
             })
             {
@@ -340,7 +340,7 @@ namespace Swift.Core
                         break;
                     }
 
-                    Thread.Sleep(3000);
+                    Thread.Sleep(6000);
                 }
             })
             {

@@ -1535,12 +1535,12 @@ namespace Swift.Core
         /// <param name="status"></param>
         public void UpdateJobStatus(EnumJobRecordStatus status, CancellationToken cancellationToken = default(CancellationToken))
         {
-            var ccJobRecord = Cluster.ConfigCenter.UpdateJobStatus(this, status, cancellationToken);
-            LogWriter.Write(string.Format("更新作业记录状态结果:{0}", ccJobRecord != null));
+            Cluster.ConfigCenter.TryUpdateJobStatus(this, status, out int errCode, out JobBase latestJob, cancellationToken);
+            LogWriter.Write(string.Format("更新作业记录状态结果:{0}", errCode));
 
-            if (ccJobRecord != null)
+            if (errCode == 0 || errCode == 2)
             {
-                this.Status = ccJobRecord.Status;
+                this.Status = status;
             }
         }
 

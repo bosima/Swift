@@ -1,7 +1,40 @@
 ﻿# 运行时基础镜像
 FROM microsoft/dotnet:2.1-aspnetcore-runtime AS base
 WORKDIR /app
-EXPOSE 9631 9632
+
+# 复制sources.list
+COPY sources.list .
+
+# 安装Consul
+ENV CONSUL_VERSION=1.4.2
+ENV HASHICORP_RELEASES=https://releases.hashicorp.com
+RUN set -eux && \
+    rm -rf /etc/localtime && \
+    ln -s /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    mv /etc/apt/sources.list /etc/apt/sources.list.bak && \
+    mv /app/sources.list /etc/apt/ && \
+    apt-get update && \
+    apt-get install -y wget unzip iproute iproute-doc && \
+    mkdir -p /tmp/build && \
+    cd /tmp/build && \
+    apkArch="$(lscpu | grep 'Architecture' | sed -e 's/^Architecture:[[:space:]]*//')" && \
+    case "${apkArch}" in \
+        aarch64) consulArch='arm64' ;; \
+        armhf) consulArch='arm' ;; \
+        x86) consulArch='386' ;; \
+        x86_64) consulArch='amd64' ;; \
+        *) echo >&2 "error: unsupported architecture: ${apkArch} (see ${HASHICORP_RELEASES}/consul/${CONSUL_VERSION}/)" && exit 1 ;; \
+    esac && \
+    wget ${HASHICORP_RELEASES}/consul/${CONSUL_VERSION}/consul_${CONSUL_VERSION}_linux_${consulArch}.zip && \
+    mkdir /app/consul && \
+    unzip -d /app/consul consul_${CONSUL_VERSION}_linux_${consulArch}.zip && \
+    ln -s /app/consul/consul /usr/local/bin/consul && \
+    cd /tmp && \
+    rm -rf /tmp/build && \
+    mkdir -p /app/consul/data && \
+    mkdir -p /app/consul/config && \
+    chown 777 /app/consul/data && \
+    consul version
 
 # 编译项目基础镜像
 FROM microsoft/dotnet:2.1-sdk AS build
@@ -19,7 +52,7 @@ COPY . .
 FROM build AS publish
 
 WORKDIR /src/Swift
-RUN dotnet build --configuration Release
+#RUN dotnet build --configuration Release
 RUN dotnet publish -c Release -o /app/swift
 
 WORKDIR /src/Swift.Management
@@ -31,40 +64,11 @@ WORKDIR /app
 COPY --from=publish /app/swift ./swift
 COPY --from=publish /app/management ./management
 
-# 安装Consul
-ENV CONSUL_VERSION=1.4.2
-ENV HASHICORP_RELEASES=https://releases.hashicorp.com
-RUN set -eux && \
-    apt-get update && \
-    apt-get install -y wget unzip && \
-    mkdir -p /tmp/build && \
-    cd /tmp/build && \
-    apkArch="$(lscpu | grep 'Architecture' | sed -e 's/^Architecture:[[:space:]]*//')" && \
-    case "${apkArch}" in \
-        aarch64) consulArch='arm64' ;; \
-        armhf) consulArch='arm' ;; \
-        x86) consulArch='386' ;; \
-        x86_64) consulArch='amd64' ;; \
-        *) echo >&2 "error: unsupported architecture: ${apkArch} (see ${HASHICORP_RELEASES}/consul/${CONSUL_VERSION}/)" && exit 1 ;; \
-    esac && \
-    wget ${HASHICORP_RELEASES}/consul/${CONSUL_VERSION}/consul_${CONSUL_VERSION}_linux_${consulArch}.zip && \
-    mkdir /app/consul && \
-    unzip -d /app/consul consul_${CONSUL_VERSION}_linux_${consulArch}.zip && \
-    ln -s /app/consul/consul /usr/local/bin/consul && \
-    cd /tmp && \
-    rm -rf /tmp/build && \
-# 确保下载的consul能够运行
-    consul version
-    
-# 创建consul的数据和配置目录
-RUN mkdir -p /app/consul/data && \
-    mkdir -p /app/consul/config && \
-    chown 777 /app/consul/data
-
-# 开放Consul端口
+# 开放端口
 EXPOSE 8300
 EXPOSE 8301 8301/udp 8302 8302/udp
-EXPOSE 8500 8600 8600/udp
+EXPOSE 8600 8600/udp
+EXPOSE 9631 9632
 
 # 启动时执行的命令
 COPY docker-entrypoint.sh /usr/local/bin/

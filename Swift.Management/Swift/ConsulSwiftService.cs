@@ -115,7 +115,7 @@ namespace Swift.Management.Swift
             {
                 foreach (var key in keys)
                 {
-                    var subKey = key.TrimStart("Swift/".ToCharArray());
+                    var subKey = key.Substring(key.IndexOf('/') + 1);
                     var clusterName = subKey.Substring(0, subKey.IndexOf('/'));
                     if (!clusterList.Any(d => d.Name == clusterName))
                     {
