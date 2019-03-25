@@ -32,6 +32,11 @@ namespace Swift.Core
         private Thread _managerElectionWatchThread;
 
         /// <summary>
+        /// The manager election watch thread cts.
+        /// </summary>
+        private CancellationTokenSource _managerElectionWatchThreadCts;
+
+        /// <summary>
         /// 管理员剧本
         /// </summary>
         private ManagerPlay _managerPlay;
@@ -106,7 +111,11 @@ namespace Swift.Core
             Cluster.OnJobConfigUpdateEventHandler += OnJobConfigUpdate;
             Cluster.OnJobConfigRemoveEventHandler += OnJobConfigRemove;
 
-            _managerElectionWatchThread = new Thread(WatchManagerElection)
+            _managerElectionWatchThreadCts = new CancellationTokenSource();
+            _managerElectionWatchThread = new Thread(() =>
+            {
+                WatchManagerElection(_managerElectionWatchThreadCts.Token);
+            })
             {
                 Name = "ManagerElectionWatchThread",
                 IsBackground = true
@@ -121,10 +130,19 @@ namespace Swift.Core
         /// </summary>
         public void Close()
         {
+            _managerElectionWatchThreadCts.Cancel();
             if (_managerElectionWatchThread != null)
             {
-
+                try
+                {
+                    _managerElectionWatchThread.Join();
+                }
+                catch (Exception ex)
+                {
+                    LogWriter.Write("wait for manager election thread exit go exception", ex, LogLevel.Warn);
+                }
             }
+            LogWriter.Write("clean manager elections thread has exited");
 
             if (_managerPlay != null)
             {
@@ -192,11 +210,11 @@ namespace Swift.Core
         /// <summary>
         /// 监控管理员选举
         /// </summary>
-        private void WatchManagerElection()
+        private void WatchManagerElection(CancellationToken cancellationToken = default(CancellationToken))
         {
             _managerElection = new ManagerElection(Cluster.Name, Id);
             _managerElection.ManagerElectCompletedEventHandler += HandleManagerElectCompleted;
-            _managerElection.Watch();
+            _managerElection.Watch(cancellationToken);
         }
 
         /// <summary>

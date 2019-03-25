@@ -256,7 +256,7 @@ namespace Swift.Core
         {
             var serviceId = string.Format("Swift-{0}-Member-{1}", Name, localIP);
             var serviceName = string.Format("Swift-{0}-Member", Name);
-            ConsulService.RegisterService(serviceId, serviceName, 10);
+            ConsulService.RegisterService(serviceId, serviceName, 20);
         }
         #endregion
 
@@ -440,6 +440,7 @@ namespace Swift.Core
         {
             var serviceName = string.Format("Swift-{0}-Member", Name);
             var healths = ConsulService.GetHealths(serviceName, cancellationToken);
+            LogWriter.Write("Swift Node Health Info: " + JsonConvert.SerializeObject(healths), Log.LogLevel.Trace);
             return healths;
         }
 

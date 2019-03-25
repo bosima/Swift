@@ -32,7 +32,7 @@ namespace Swift.Core.Consul
         /// <returns>The get.</returns>
         /// <param name="key">Key.</param>
         /// <param name="waitTime">Wait time.</param>
-        public static KVPair BlockGet(string key, TimeSpan waitTime, ulong waitIndex)
+        public static KVPair BlockGet(string key, TimeSpan waitTime, ulong waitIndex, CancellationToken cancellationToken = default(CancellationToken))
         {
             return Retry(() =>
             {
@@ -40,7 +40,7 @@ namespace Swift.Core.Consul
                 {
                     WaitTime = waitTime,
                     WaitIndex = waitIndex
-                }).Result.Response;
+                }, cancellationToken).Result.Response;
             }, 1);
         }
 
@@ -49,11 +49,11 @@ namespace Swift.Core.Consul
         /// </summary>
         /// <param name="kv"></param>
         /// <returns></returns>
-        public static bool Acquire(KVPair kv)
+        public static bool Acquire(KVPair kv, CancellationToken cancellationToken = default(CancellationToken))
         {
             return Retry(() =>
             {
-                return client.KV.Acquire(kv).Result.Response;
+                return client.KV.Acquire(kv, cancellationToken).Result.Response;
             }, 1);
         }
 

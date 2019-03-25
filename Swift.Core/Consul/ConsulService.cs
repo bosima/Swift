@@ -25,18 +25,18 @@ namespace Swift.Core.Consul
         {
             Dictionary<string, bool> healths = new Dictionary<string, bool>();
 
-            var checks = Retry(() =>
+            var services = Retry(() =>
             {
-                return client.Health.Checks(serviceName, cancellationToken).Result;
+                return client.Health.Service(serviceName, cancellationToken).Result;
             }, 2);
 
-            if (checks.Response != null || checks.Response.Length > 0)
+            if (services.Response != null || services.Response.Length > 0)
             {
-                var serviceCheckGroup = checks.Response.GroupBy(d => d.ServiceID);
-                foreach (var serviceChecks in serviceCheckGroup)
+                var serviceEntry = services.Response;
+                foreach (var service in serviceEntry)
                 {
-                    var serviceId = serviceChecks.Key;
-                    var serviceStatus = !serviceChecks.Any(d => d.Status != HealthStatus.Passing);
+                    var serviceId = service.Service.ID;
+                    var serviceStatus = !service.Checks.Any(d => d.Status != HealthStatus.Passing);
                     healths.Add(serviceId, serviceStatus);
                 }
             }
@@ -97,6 +97,11 @@ namespace Swift.Core.Consul
         }
 
         /// <summary>
+        /// The ttl pass thread.
+        /// </summary>
+        private static Thread ttlPassThread;
+
+        /// <summary>
         /// 注册服务，使用此方法注册的服务需要定时Pass TTL
         /// </summary>
         /// <param name="serviceId"></param>
@@ -136,7 +141,7 @@ namespace Swift.Core.Consul
                 {
                     ID = "CHECK:" + serviceId,
                     Name = "CHECK " + serviceId,
-                    DeregisterCriticalServiceAfter = new TimeSpan(0, 30, 0),
+                    DeregisterCriticalServiceAfter = new TimeSpan(1, 0, 0),
                     Notes = "服务 " + serviceId + " 健康监测",
                     ServiceID = serviceId,
                     Status = HealthStatus.Warning,
@@ -149,24 +154,29 @@ namespace Swift.Core.Consul
                 throw new Exception("Swift Member健康检查注册失败，返回值：" + regCheckResult.StatusCode);
             }
 
-            var ttlPassThread = new Thread(new ThreadStart(() =>
+            if (ttlPassThread == null)
             {
-                while (true)
+                ttlPassThread = new Thread(new ThreadStart(() =>
                 {
-                    try
-                    {
-                        PassTTL(serviceId);
-                        Thread.Sleep(4000);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogWriter.Write(string.Format("Consul PassTTL异常:{0}", ex.Message + ex.StackTrace));
-                        Thread.Sleep(1000);
-                    }
-                }
-            }));
+                    var sleepTime = (ttl / 2 - 1) * 1000;
 
-            ttlPassThread.Start();
+                    while (true)
+                    {
+                        try
+                        {
+                            PassTTL(serviceId);
+                        }
+                        catch (Exception ex)
+                        {
+                            LogWriter.Write(string.Format("Consul PassTTL异常:{0}", ex.Message + ex.StackTrace));
+                        }
+
+                        Thread.Sleep(sleepTime);
+                    }
+                }));
+
+                ttlPassThread.Start();
+            }
         }
 
         private static void Retry(Action action, int retryTimes)
@@ -177,6 +187,7 @@ namespace Swift.Core.Consul
                 try
                 {
                     action();
+                    break;
                 }
                 catch (AggregateException ex)
                 {

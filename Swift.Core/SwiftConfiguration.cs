@@ -17,7 +17,7 @@ namespace Swift.Core
         {
             get
             {
-                return 9000;
+                return 6000;
             }
         }
 
@@ -28,7 +28,7 @@ namespace Swift.Core
         {
             get
             {
-                return 12000;
+                return 9000;
             }
         }
 
@@ -39,7 +39,7 @@ namespace Swift.Core
         {
             get
             {
-                return 15000;
+                return 12000;
             }
         }
         #endregion

@@ -391,6 +391,11 @@ namespace Swift.Core.Consul
         /// <param name="cancellationToken">Cancellation token.</param>
         public JobBase GetJobRecord(string jobName, string jobId, Cluster cluster, CancellationToken cancellationToken)
         {
+            if (string.IsNullOrWhiteSpace(jobName) || string.IsNullOrWhiteSpace(jobId))
+            {
+                return null;
+            }
+
             var jobRecordKey = GetJobRecordFullKey(cluster.Name, jobName, jobId);
             var jobRecordKV = ConsulKV.Get(jobRecordKey, cancellationToken);
             if (jobRecordKV == null || jobRecordKV.Value == null)

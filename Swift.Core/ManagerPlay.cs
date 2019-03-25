@@ -159,6 +159,8 @@ namespace Swift.Core
             {
                 while (true)
                 {
+                    Thread.Sleep(6000);
+
                     try
                     {
                         // 这里没有传递cancellationToken，清理工作，不希望取消，尽量都执行
@@ -174,8 +176,6 @@ namespace Swift.Core
                     {
                         break;
                     }
-
-                    Thread.Sleep(9000);
                 }
             })
             {
@@ -659,6 +659,8 @@ namespace Swift.Core
             {
                 while (true)
                 {
+                    Thread.Sleep(3000);
+
                     // 这里没有传递cancellationToken，清理工作，不希望取消，尽量都执行
                     CleanExitedSystemTask();
 
@@ -667,8 +669,6 @@ namespace Swift.Core
                     {
                         break;
                     }
-
-                    Thread.Sleep(3000);
                 }
             })
             {
@@ -702,18 +702,18 @@ namespace Swift.Core
                     LogWriter.Write("准备从激活池中移除取消或出现异常的作业：" + jobId);
                 }
 
-                if (sysTask.Status == TaskStatus.RanToCompletion
-                    || sysTask.Status == TaskStatus.Canceled
-                    || sysTask.Status == TaskStatus.Faulted)
-                {
-                    var job = (JobBase)sysTask.AsyncState;
-                    if (job.HasRelatedProcess)
-                    {
-                        // 确保杀掉作业未释放的进程
-                        LogWriter.Write("prepare ensure kill job process");
-                        job.KillRelatedProcess();
-                    }
-                }
+                //if (sysTask.Status == TaskStatus.RanToCompletion
+                //    || sysTask.Status == TaskStatus.Canceled
+                //    || sysTask.Status == TaskStatus.Faulted)
+                //{
+                //    var job = (JobBase)sysTask.AsyncState;
+                //    if (job.HasRelatedProcess)
+                //    {
+                //        // 确保杀掉作业未释放的进程
+                //        LogWriter.Write("prepare ensure kill job process");
+                //        job.KillRelatedProcess();
+                //    }
+                //}
             }
 
             if (removeList.Count > 0)

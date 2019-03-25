@@ -45,14 +45,14 @@ namespace Swift.Core
         /// <summary>
         /// 监控Manager选举
         /// </summary>
-        public void Watch()
+        public void Watch(CancellationToken cancellationToken = default(CancellationToken))
         {
             var key = GetManagerKey();
 
             LogWriter.Write("start first manager election");
 
             // 上来就先选举一次，看看结果，以启动Manager或Worker剧本
-            var electResult = Elect(out ulong modifyIndex);
+            var electResult = Elect(out ulong modifyIndex, cancellationToken);
             ulong waitIndex = modifyIndex++;
             ManagerElectCompletedEventHandler?.Invoke(electResult, _managerId);
 
@@ -61,18 +61,20 @@ namespace Swift.Core
 
             do
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 try
                 {
                     LogWriter.Write("start manager watch query", LogLevel.Debug);
 
                     // 阻塞查询
-                    var kv = ConsulKV.BlockGet(key, waitTime, waitIndex);
+                    var kv = ConsulKV.BlockGet(key, waitTime, waitIndex, cancellationToken);
 
                     // 可能Key被删除了
                     if (kv == null)
                     {
                         LogWriter.Write("manager is not exists, start election right away");
-                        electResult = Elect(out modifyIndex);
+                        electResult = Elect(out modifyIndex, cancellationToken);
                         waitIndex = modifyIndex++;
                         LogWriter.Write(string.Format("elect result: {0}, current manager: {1}", electResult, _managerId));
                         ManagerElectCompletedEventHandler?.Invoke(electResult, _managerId);
@@ -92,7 +94,7 @@ namespace Swift.Core
                             if (Encoding.UTF8.GetString(kv.Value) == _memberId)
                             {
                                 LogWriter.Write("last manager is me, start election right away");
-                                electResult = Elect(out modifyIndex);
+                                electResult = Elect(out modifyIndex, cancellationToken);
                                 waitIndex = modifyIndex++;
                                 LogWriter.Write(string.Format("elect result: {0}, current manager: {1}", electResult, _managerId));
                                 ManagerElectCompletedEventHandler?.Invoke(electResult, _managerId);
@@ -102,7 +104,7 @@ namespace Swift.Core
                                 if (offlineConfirmAmount == 0)
                                 {
                                     LogWriter.Write("last manager not wake for a long time, start election right away", LogLevel.Info);
-                                    electResult = Elect(out modifyIndex);
+                                    electResult = Elect(out modifyIndex, cancellationToken);
                                     waitIndex = modifyIndex++;
                                     LogWriter.Write(string.Format("elect result: {0}, current manager: {1}", electResult, _managerId));
                                     ManagerElectCompletedEventHandler?.Invoke(electResult, _managerId);
@@ -143,7 +145,7 @@ namespace Swift.Core
         /// 当前节点参选Manager
         /// </summary>
         /// <returns>The elect.</returns>
-        private bool Elect(out ulong modifyIndex)
+        private bool Elect(out ulong modifyIndex, CancellationToken cancellationToken = default(CancellationToken))
         {
             modifyIndex = 0;
             var electResult = false;
@@ -157,7 +159,7 @@ namespace Swift.Core
 
             // 获取选举要锁定的Consul KV对象
             var key = GetManagerKey();
-            var kv = ConsulKV.Get(key);
+            var kv = ConsulKV.Get(key, cancellationToken);
             if (kv == null)
             {
                 kv = ConsulKV.Create(key);
@@ -170,11 +172,11 @@ namespace Swift.Core
                 // 绑定当前节点的Session去选举
                 kv.Session = _session;
                 kv.Value = Encoding.UTF8.GetBytes(_memberId);
-                electResult = ConsulKV.Acquire(kv);
+                electResult = ConsulKV.Acquire(kv, cancellationToken);
             }
 
             // 无论参选成功与否，获取当前的Manager
-            var managerKV = ConsulKV.Get(key);
+            var managerKV = ConsulKV.Get(key, cancellationToken);
             if (managerKV != null)
             {
                 modifyIndex = managerKV.ModifyIndex;

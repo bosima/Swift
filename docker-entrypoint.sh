@@ -50,8 +50,8 @@ if [ -n "$CONSUL_CLIENT_INTERFACE" ]; then
   echo "==> Found address '$CONSUL_CLIENT_ADDRESS' for interface '$CONSUL_CLIENT_INTERFACE', settin consul client option..."
 fi
 
-CONSUL_BOOT=
-if  [ "${consulboot}"=='1' ]; then
+CONSUL_BOOT=''
+if  [ "${consulboot}" = '1' ]; then
     CONSUL_BOOT="-bootstrap -server"
 fi
 
@@ -60,7 +60,9 @@ if  [ -n "${consuljoinip}" ]; then
     CONSUL_JOIN="-retry-join "${consuljoinip}""
 fi
 
-nohup consul agent ${CONSUL_BIND} ${CONSUL_CLIENT} -data-dir=${CONSUL_DATA_DIR} ${CONSUL_JOIN} ${CONSUL_BOOT} > /app/consul/log.txt 2>&1 &
+echo "${CONSUL_BOOT}"
+echo "consul is starting"
+nohup consul agent -datacenter=swiftdc ${CONSUL_BIND} ${CONSUL_CLIENT} -data-dir=${CONSUL_DATA_DIR} ${CONSUL_JOIN} ${CONSUL_BOOT} > /app/consul/log.txt 2>&1 &
 sleep 15s
 echo "consul has started"
 

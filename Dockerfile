@@ -41,14 +41,15 @@ FROM microsoft/dotnet:2.1-sdk AS build
 WORKDIR /src
 
 # 复制项目主文件，还原项目依赖项
-COPY Swift/Swift.csproj Swift/
-COPY Swift.Core/Swift.Core.csproj Swift.Core/
-COPY Swift.Management/Swift.Management.csproj Swift.Management/
-RUN dotnet restore Swift/Swift.csproj
-RUN dotnet restore Swift.Management/Swift.Management.csproj
+#COPY Swift/Swift.csproj Swift/
+#COPY Swift.Core/Swift.Core.csproj Swift.Core/
+#COPY Swift.Management/Swift.Management.csproj Swift.Management/
 
 # 复制所有项目源文件，然后发布项目
 COPY . .
+RUN dotnet restore Swift/Swift.csproj
+RUN dotnet restore Swift.Management/Swift.Management.csproj
+
 FROM build AS publish
 
 WORKDIR /src/Swift
@@ -65,10 +66,7 @@ COPY --from=publish /app/swift ./swift
 COPY --from=publish /app/management ./management
 
 # 开放端口
-EXPOSE 8300
-EXPOSE 8301 8301/udp 8302 8302/udp
-EXPOSE 8600 8600/udp
-EXPOSE 9631 9632
+EXPOSE 8300 8301 8301/udp 8302 8302/udp 9631 9632
 
 # 启动时执行的命令
 COPY docker-entrypoint.sh /usr/local/bin/
