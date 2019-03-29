@@ -7,9 +7,7 @@ Swift是一个基于.NET Core的分布式批处理框架，支持将作业分割
 
 Swift作业处理分为3步：分割作业、执行任务、合并结果。
 
-Swift由多个成员节点组成集群，成员分为Manager和Worker，Manager负责分割作业和合并结果，Worker负责执行具体的任务。
-
-Manager同时只有一个，自动选举产生，集群工作需要至少2个节点，节点数>=3才有意义。
+Swift由多个成员节点组成集群，成员分为Manager和Worker，Manager负责分割作业和合并结果，Worker负责执行具体的任务。Manager同时只有一个，自动选举产生，集群工作需要至少2个节点，节点数>=3才有意义。
 
 Swift通过启动子进程来处理作业，原则上可以支持各类语言开发的程序，目前仅实现了.NET Core作业的支持。
 
@@ -22,19 +20,19 @@ Swift作业的元数据都保存在集中的配置中心，各个节点从配置
 
 ### 运行环境搭建
 
-使用docker可以快速创建一个swift集群，省去下载、部署、配置等各种麻烦事，如果你的程序没有重度使用Consul，也可以考虑用于生产环境。
-
 Swift基于.NET Core平台，可以运行在Windows、Linux、Mac等多种操作系统，动手能力强的同学可以在自己熟悉的环境手动部署。
 
-#### docker
+不过使用docker可以快速创建一个Swift集群，省去下载、部署、配置等各种麻烦事，如果你的程序没有重度使用Consul，也可以考虑用于生产环境。
 
-1、使用解决方案中的Dockerfile生成Swift镜像：
+#### 1、docker
+
+（1）使用解决方案中的Dockerfile生成Swift镜像：
 
 ```shell    
 docker build -t fireflysoft/swift:latest .
 ```
 
-2、启动Swift容器：
+（2）启动Swift容器：
 
 没有Consul集群的情况下，为了方便测试，支持通过参数 -consulboot 启动Consul Agent，使之作为Consul集群的Server和Leader。
 生产环境下为了数据安全，应该有专门的Consul Server节点。
@@ -54,9 +52,9 @@ docker run --name swift2 -d fireflysoft/swift:latest -cluster=test -consuljoinip
 建议启动3个Swift容器，以方便进行测试。
 
 
-#### 手动部署
+#### 2、手动部署
 
-1、部署Consul
+（1）部署Consul
 
 这里只是大概说下Consul的部署，具体的使用或问题请网络搜索，也欢迎加入Consul交流群讨论（234939415）。
 
@@ -84,11 +82,9 @@ consul agent -config-dir ./conf
 ```
 测试环境1个Server节点就够了，生产环境建议启动3或5个Server节点。
 
-2、部署Swift
+（2）部署Swift
 
-Swift当前有2个核心程序：节点程序（Swift）和管理界面程序（Swift.Management），前者是一个控制台程序，后者是一个Web程序。
-
-这两个程序部署起来很简单，需要注意当前机器上需要已经部署了Consul节点。
+Swift当前有2个核心程序：节点程序（Swift）和管理界面程序（Swift.Management），前者是一个控制台程序，后者是一个Web程序。这两个程序部署起来很简单，需要注意当前机器上需要已经部署了Consul节点。
 
 首先使用Visual Studio发布程序，然后部署到指定的目录，使用命令行启动。
 
@@ -141,12 +137,12 @@ dotnet publish -c Release
 ```
 
 运行时间计划格式说明：
--HH:mm 每天定时运行
--ddd HH:mm 每周定时运行
--MM-dd HH:mm 每月定时运行
--yyyy-MM-dd HH:mm 定时运行一次
--dH 每d小时执行一次
--dm 每m分钟执行一次
+- HH:mm 每天定时运行
+- ddd HH:mm 每周定时运行
+- MM-dd HH:mm 每月定时运行
+- yyyy-MM-dd HH:mm 定时运行一次
+- dH 每d小时执行一次
+- dm 每m分钟执行一次
 
 然后将这些全部打包到一个zip文件，文件名需要和job.json中的作业名称一致。
 
