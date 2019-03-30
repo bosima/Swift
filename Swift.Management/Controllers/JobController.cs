@@ -21,6 +21,27 @@ namespace Swift.Management.Controllers
         }
 
         [HttpGet]
+        public IActionResult GetJobConfig(string clusterName, string jobName)
+        {
+            try
+            {
+                var result = _swift.GetJobConfig(clusterName, jobName);
+                if (result != null)
+                {
+                    return new ObjectResult(new { errCode = 0, data = result });
+                }
+                else
+                {
+                    return new ObjectResult(new { errCode = 1, errMessage = "获取作业配置信息失败" });
+                }
+            }
+            catch (Exception ex)
+            {
+                return new ObjectResult(new { errCode = 2, errMessage = ex.Message });
+            }
+        }
+
+        [HttpGet]
         public IActionResult Run(string clusterName, string jobName)
         {
             try

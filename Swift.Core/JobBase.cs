@@ -530,6 +530,8 @@ namespace Swift.Core
             {
                 var tasks = LoadTasksFromFile(cancellationToken).ToArray();
 
+                // TODO:考虑每个工人现在的工作量，尽量分配给空闲的节点
+
                 // 计算每个工人分配的任务数量
                 var taskNumPerWorker = (int)Math.Ceiling(tasks.Length / (double)onlineWorkers.Length);
 
@@ -642,7 +644,7 @@ namespace Swift.Core
             var jobPkgLockName = SwiftConfiguration.GetFileOperateLockName(pkgPath);
             lock (string.Intern(jobPkgLockName))
             {
-                ZipFile.ExtractToDirectory(pkgPath, CurrentJobSpacePath);
+                ZipFile.ExtractToDirectory(pkgPath, CurrentJobSpacePath, true);
             }
         }
 

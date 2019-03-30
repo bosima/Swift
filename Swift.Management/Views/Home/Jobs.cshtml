@@ -56,7 +56,7 @@
         $('#jobPkgFile').fileinput('upload');
    });
 
-  $('#jobOperatorResultModal').on('hide.bs.modal', function () {
+  $('#commonModal').on('hide.bs.modal', function () {
         window.location.reload();
   });
 
@@ -68,17 +68,78 @@
             data:{"clusterName":clusterName,"jobName":jobName},
             success: function(data,textStatus){
                 if(data.errCode==0){
-                        $("#jobOperatorResultModal .modal-title").text("提交成功");
-                        $("#jobOperatorResultModal .modal-body").text("任务已经创建，将很快启动运行。");
-                        $('#jobOperatorResultModal').modal({ keyboard: false });
+                        $("#commonModal .modal-title").text("提交成功");
+                        $("#commonModal .modal-body").text("任务已经创建，将很快启动运行。");
+                        $('#commonModal').modal({ keyboard: false });
                 }else{
-                        $("#jobOperatorResultModal .modal-title").text("提交失败");
-                        $("#jobOperatorResultModal .modal-body").text(data.errMessage);
-                        $('#jobOperatorResultModal').modal({ keyboard: false });
+                        $("#commonModal .modal-title").text("提交失败");
+                        $("#commonModal .modal-body").text(data.errMessage);
+                        $('#commonModal').modal({ keyboard: false });
                 }
             },
             error:function(XMLHttpRequest, textStatus, errorThrown){
                 alert("提交失败");
+            }
+        });
+    }
+
+    function ShowJobConfig(clusterName,jobName){
+        $.ajax({
+            url: "@Url.Action("GetJobConfig","Job")",
+            type:"GET",
+            dataType:"json",
+            data:{"clusterName":clusterName,"jobName":jobName},
+            success: function(result,textStatus){
+                if(result.errCode==0){
+                        $("#commonModal .modal-title").text(result.data.name);
+                        var configHtml="<table class=\"table table-striped table-hover\" style=\"word-break:break-all; word-wrap:break-all;\">";
+                        configHtml+="<tr>";
+                        configHtml+="<td style='width:200px'>版本</td>";
+                        configHtml+="<td style='width:368px'>"+result.data.version+"</td>";
+                        configHtml+="</tr>";
+                        configHtml+="<tr>";
+                        configHtml+="<td>可执行文件类型</td>";
+                        configHtml+="<td>"+result.data.exeType+"</td>";
+                        configHtml+="</tr>";
+                        configHtml+="<tr>";
+                        configHtml+="<td>可执行文件名称</td>";
+                        configHtml+="<td>"+result.data.fileName+"</td>";
+                        configHtml+="</tr>";
+                        configHtml+="<tr>";
+                        configHtml+="<td>作业类</td>";
+                        configHtml+="<td>"+result.data.jobClassName+"</td>";
+                        configHtml+="</tr>";
+                        configHtml+="<tr>";
+                        configHtml+="<td>执行计划</td>";
+                        configHtml+="<td>"+result.data.runTimePlan+"</td>";
+                        configHtml+="</tr>";
+                        configHtml+="<tr>";
+                        configHtml+="<td>成员不可用确认阈值</td>";
+                        configHtml+="<td>"+result.data.memberUnavailableThreshold+"分钟</td>";
+                        configHtml+="</tr>";
+                        configHtml+="<tr>";
+                        configHtml+="<td>作业分割执行超时时间</td>";
+                        configHtml+="<td>"+result.data.jobSplitTimeout+"分钟</td>";
+                        configHtml+="</tr>";
+                        configHtml+="<tr>";
+                        configHtml+="<td>单个任务执行超时时间</td>";
+                        configHtml+="<td>"+result.data.taskExecuteTimeout+"分钟</td>";
+                        configHtml+="</tr>";
+                        configHtml+="<tr>";
+                        configHtml+="<td>结果合并执行超时时间</td>";
+                        configHtml+="<td>"+result.data.taskResultCollectTimeout+"分钟</td>";
+                        configHtml+="</tr>";
+                        configHtml+="</table>";
+                        $("#commonModal .modal-body").html(configHtml);
+                        $('#commonModal').modal({ keyboard: false });
+                }else{
+                        $("#commonModal .modal-title").text(jobName);
+                        $("#commonModal .modal-body").text(data.errMessage);
+                        $('#commonModal').modal({ keyboard: false });
+                }
+            },
+            error:function(XMLHttpRequest, textStatus, errorThrown){
+                alert("获取作业配置信息失败！");
             }
         });
     }
@@ -99,9 +160,7 @@
             <div class="col-md-3 vertical-center"></div>
         </div>*@
 </div>
-@*
-    // TODO:增加清空执行时间操作，以关闭作业运行
-*@
+
 <div id="jobs-list">
     <table class="table table-striped table-hover">
         <tr>
@@ -110,12 +169,6 @@
             </th>
             <th>
                 当前版本
-            </th>
-            <th>
-                执行文件类型
-            </th>
-            <th>
-                作业类
             </th>
             <th>
                 执行计划
@@ -130,40 +183,35 @@
 
         @foreach (var item in Model)
         {
-        <tr>
-            <td>
-                @Html.DisplayFor(modelItem => item.Name)
-            </td>
-            <td>
-                @Html.DisplayFor(modelItem => item.Version)
-            </td>
-            <td>
-                @Html.DisplayFor(modelItem => item.ExeType)
-            </td>
-            <td>
-                @Html.DisplayFor(modelItem => item.JobClassName)
-            </td>
-            <td>
-                @string.Join(",", item.RunTimePlan)
-            </td>
-            <td>
-                @(item.LastRecordCreateTime.HasValue ? item.LastRecordCreateTime.Value.ToString("yyyy-MM-dd HH:mm:ss") : string.Empty)
-            </td>
-            <td>
-                @Html.ActionLink("查看", "JobRecords", new { job = item.Name, cluster = ViewBag.ClusterName })
-                <a href="javascript:RunJob('@ViewBag.ClusterName','@item.Name')">立即运行</a>
-            </td>
-        </tr>
+            <tr>
+                <td>
+                    @Html.DisplayFor(modelItem => item.Name)
+                </td>
+                <td>
+                    @Html.DisplayFor(modelItem => item.Version)
+                </td>
+                <td>
+                    @string.Join(",", item.RunTimePlan)
+                </td>
+                <td>
+                    @(item.LastRecordCreateTime.HasValue ? item.LastRecordCreateTime.Value.ToString("yyyy-MM-dd HH:mm:ss") : string.Empty)
+                </td>
+                <td>
+                    <a href="javascript:ShowJobConfig('@ViewBag.ClusterName','@item.Name')">配置信息</a>
+                    @Html.ActionLink("运行记录", "JobRecords", new { job = item.Name, cluster = ViewBag.ClusterName })
+                    <a href="javascript:RunJob('@ViewBag.ClusterName','@item.Name')">立即运行</a>
+                </td>
+            </tr>
         }
     </table>
 </div>
 
-<div class="modal fade" id="jobOperatorResultModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+<div class="modal fade" id="commonModal" tabindex="-1" role="dialog" aria-labelledby="commonModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
-                <h4 class="modal-title" id="myModalLabel"></h4>
+                <h4 class="modal-title" id="commonModalLabel"></h4>
             </div>
             <div class="modal-body">
 

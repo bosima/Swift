@@ -8,6 +8,8 @@ namespace Swift.Management.Swift
     {
         List<Cluster> GetClusters();
 
+        JobConfig GetJobConfig(string clusterName, string jobName);
+
         bool Run(string clusterName, string jobName);
 
         bool Cancel(string clusterName, string jobName, string jobId);

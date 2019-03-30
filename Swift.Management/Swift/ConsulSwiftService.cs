@@ -28,11 +28,9 @@ namespace Swift.Management.Swift
             // 如果没有指定日期则从配置中心获取最后一次作业记录时间，默认显示这一天的作业记录
             if (!date.HasValue)
             {
-                var jobConfigKey = string.Format("Swift/{0}/Jobs/{1}/Config", clusterName, jobName);
-                var configKV = ConsulKV.Get(jobConfigKey);
-                if (configKV != null && configKV.Value != null)
+                var jobConfig = GetJobConfig(clusterName, jobName);
+                if (jobConfig != null)
                 {
-                    JobConfig jobConfig = JsonConvert.DeserializeObject<JobConfig>(Encoding.UTF8.GetString(configKV.Value));
                     date = jobConfig.LastRecordCreateTime;
                 }
             }
@@ -44,6 +42,24 @@ namespace Swift.Management.Swift
             }
 
             return GetSpecifiedDayJobRecords(clusterName, jobName, date.Value);
+        }
+
+        /// <summary>
+        /// Gets the job config.
+        /// </summary>
+        /// <returns>The job config.</returns>
+        /// <param name="clusterName">Cluster name.</param>
+        /// <param name="jobName">Job name.</param>
+        public JobConfig GetJobConfig(string clusterName, string jobName)
+        {
+            var jobConfigKey = string.Format("Swift/{0}/Jobs/{1}/Config", clusterName, jobName);
+            var configKV = ConsulKV.Get(jobConfigKey);
+            if (configKV != null && configKV.Value != null)
+            {
+                return JsonConvert.DeserializeObject<JobConfig>(Encoding.UTF8.GetString(configKV.Value));
+            }
+
+            return null;
         }
 
         /// <summary>
