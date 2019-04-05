@@ -488,10 +488,10 @@ namespace Swift.Core
             if (offlineWorker != null
                 && DateTime.Now.Subtract(offlineWorker.OfflineTime.Value).TotalMinutes < MemberUnavailableThreshold)
             {
-                return false;
+                return true;
             }
 
-            return true;
+            return false;
         }
 
         /// <summary>
@@ -1159,7 +1159,7 @@ namespace Swift.Core
                     bool pullResult = false;
                     try
                     {
-                        PullTaskResult(task, cancellationToken);
+                        PullTaskResult(task, false, cancellationToken);
                         pullResult = true;
                     }
                     catch (System.Exception ex)
@@ -1183,9 +1183,18 @@ namespace Swift.Core
         /// 拉取任务结果
         /// </summary>
         /// <param name="task"></param>
-        private void PullTaskResult(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
+        private void PullTaskResult(JobTask task, bool checkResultFile = false, CancellationToken cancellationToken = default(CancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (checkResultFile)
+            {
+                var taskResultPath = SwiftConfiguration.GetJobTaskResultPath(task.Job.Name, task.Job.Id, task.Id);
+                if (File.Exists(taskResultPath))
+                {
+                    return;
+                }
+            }
 
             // 任务所属成员
             var memberId = TaskPlan.Where(d => d.Value.Any(t => t.Id == task.Id)).Select(d => d.Key).FirstOrDefault();
@@ -1256,6 +1265,19 @@ namespace Swift.Core
             // 更新作业状态为TaskMerging
             UpdateJobStatus(EnumJobRecordStatus.TaskMerging, cancellationToken);
 
+            var completeTasks = TaskPlan.SelectMany(d => d.Value);
+            foreach (var task in completeTasks)
+            {
+                try
+                {
+                    PullTaskResult(task, true, cancellationToken);
+                }
+                catch (System.Exception ex)
+                {
+                    LogWriter.Write(string.Format("同步任务结果异常:{0}", ex.Message), ex);
+                }
+            }
+
             // 保存任务合并状态文件
             string taskCreateStatusFilePath = SwiftConfiguration.GetJobTaskMergeStatusPath(CurrentJobSpacePath);
             File.WriteAllTextAsync(taskCreateStatusFilePath, "1", cancellationToken).Wait();
@@ -1305,7 +1327,7 @@ namespace Swift.Core
                 File.WriteAllText(jobResultPath, result);
                 LogWriter.Write("已经将任务结果写入文件");
 
-                using (var zip = ZipFile.Open(jobZipResultPath, ZipArchiveMode.Create))
+                using (var zip = ZipFile.Open(jobZipResultPath, ZipArchiveMode.Update))
                 {
                     zip.CreateEntryFromFile(jobResultPath, "result.txt");
                 }

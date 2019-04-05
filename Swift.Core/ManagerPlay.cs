@@ -405,6 +405,11 @@ namespace Swift.Core
 
                     hasProcessAmount++;
                 }
+
+                if (hasProcessAmount < jobs.Length)
+                {
+                    Thread.Sleep(3000);
+                }
             }
 
             LogWriter.Write("作业循环已遍历当前所有作业。");
