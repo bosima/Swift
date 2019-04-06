@@ -25,6 +25,7 @@ namespace Swift.Core
                 JobClassName = job.JobClassName;
                 Status = job.Status;
                 Version = job.Version;
+                TaskPlan = job.TaskPlan;
                 ModifyIndex = job.ModifyIndex;
                 TaskExecuteTimeout = job.TaskExecuteTimeout;
                 JobSplitTimeout = job.JobSplitTimeout;

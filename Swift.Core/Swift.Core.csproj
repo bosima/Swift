@@ -9,6 +9,12 @@
         <AssemblyVersion>0.1.0</AssemblyVersion>
         <Copyright>bosima</Copyright>
     </PropertyGroup>
+    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+      <LangVersion>7.1</LangVersion>
+    </PropertyGroup>
+    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+      <LangVersion>7.1</LangVersion>
+    </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="Consul" Version="0.7.2.6" />
         <PackageReference Include="Newtonsoft.Json" Version="12.0.1" />

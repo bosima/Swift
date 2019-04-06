@@ -348,7 +348,7 @@ namespace Swift.Core
         /// <summary>
         /// 替换任务计划中离线的Worker
         /// </summary>
-        public void ReplaceTaskPlanOfflineWorker(CancellationToken cancellationToken = default(CancellationToken))
+        public void ReplaceTaskPlanOfflineWorker(CancellationToken cancellationToken = default)
         {
             if (TaskPlan == null || TaskPlan.Count <= 0)
             {
@@ -556,7 +556,7 @@ namespace Swift.Core
         /// <summary>
         /// 调用作业分割方法，将调用具体作业实现的分割方法
         /// </summary>
-        private void CallJobSplitMethod(CancellationToken cancellationToken = default(CancellationToken))
+        private void CallJobSplitMethod(CancellationToken cancellationToken = default)
         {
             string taskCreateStatusPath = SwiftConfiguration.GetJobSplitStatusPath(CurrentJobSpacePath);
 
@@ -621,7 +621,7 @@ namespace Swift.Core
         /// <summary>
         /// 为当前作业创建作业空间
         /// </summary>
-        public void CreateJobSpace(CancellationToken cancellationToken = default(CancellationToken))
+        public void CreateJobSpace(CancellationToken cancellationToken = default)
         {
             ClearJobSpace(cancellationToken);
 
@@ -635,7 +635,7 @@ namespace Swift.Core
         /// <summary>
         /// 解压作业包到作业空间
         /// </summary>
-        private void ExtractJobPackageToJobSpace(CancellationToken cancellationToken = default(CancellationToken))
+        private void ExtractJobPackageToJobSpace(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -652,7 +652,7 @@ namespace Swift.Core
         /// 创建作业空间目录
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
-        private void CreateJobSpaceDirectory(CancellationToken cancellationToken = default(CancellationToken))
+        private void CreateJobSpaceDirectory(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -667,7 +667,7 @@ namespace Swift.Core
         /// 清空作业空间
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
-        private void ClearJobSpace(CancellationToken cancellationToken = default(CancellationToken))
+        private void ClearJobSpace(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -733,7 +733,7 @@ namespace Swift.Core
         /// <summary>
         /// 此时进程已经脱离Swift控制，只能监控运行
         /// </summary>
-        public void MointorRunJobSplit(CancellationToken cancellationToken = default(CancellationToken))
+        public void MointorRunJobSplit(CancellationToken cancellationToken = default)
         {
             var isExecuteOK = BlockCheckJobSplitStatus(cancellationToken);
             if (isExecuteOK)
@@ -752,7 +752,7 @@ namespace Swift.Core
         /// 阻塞检查作业分割状态
         /// </summary>
         /// <returns></returns>
-        private bool BlockCheckJobSplitStatus(CancellationToken cancellationToken = default(CancellationToken))
+        private bool BlockCheckJobSplitStatus(CancellationToken cancellationToken = default)
         {
             bool isOK = true;
 
@@ -876,7 +876,7 @@ namespace Swift.Core
         /// 运行任务
         /// </summary>
         /// <param name="task"></param>
-        public void RunTask(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
+        public void RunTask(JobTask task, CancellationToken cancellationToken = default)
         {
             PullTaskRequirement(task, cancellationToken);
 
@@ -905,7 +905,7 @@ namespace Swift.Core
         /// 此时进程已经脱离Swift控制，只能监控运行
         /// </summary>
         /// <param name="task">Task.</param>
-        public void MointorRunTask(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
+        public void MointorRunTask(JobTask task, CancellationToken cancellationToken = default)
         {
             var isExecuteOK = BlockCheckTaskExecuteStatus(task, cancellationToken);
             if (isExecuteOK)
@@ -924,7 +924,7 @@ namespace Swift.Core
         /// 拉取任务需求
         /// </summary>
         /// <param name="task"></param>
-        private void PullTaskRequirement(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
+        private void PullTaskRequirement(JobTask task, CancellationToken cancellationToken = default)
         {
             // 写task配置
             task.WriteConfig(cancellationToken);
@@ -952,19 +952,16 @@ namespace Swift.Core
         /// 开始处理任务
         /// </summary>
         /// <param name="task"></param>
-        private void StartRunTask(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
+        private void StartRunTask(JobTask task, CancellationToken cancellationToken = default)
         {
             task.UpdateTaskStatus(EnumTaskStatus.Executing, cancellationToken);
             LogWriter.Write("已更新任务状态：" + task.BusinessId + "," + EnumTaskStatus.Executing, Log.LogLevel.Trace);
-
-            UpdateJobStatus(EnumJobRecordStatus.TaskExecuting, cancellationToken);
-            LogWriter.Write("已更新作业状态：" + task.Job.BusinessId + "," + EnumJobRecordStatus.TaskExecuting, Log.LogLevel.Trace);
         }
 
         /// <summary>
         /// 调用任务执行方法
         /// </summary>
-        public void CallTaskExecuteMethod(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
+        public void CallTaskExecuteMethod(JobTask task, CancellationToken cancellationToken = default)
         {
             // 当前任务文件夹
             var currentTaskPath = SwiftConfiguration.GetJobTaskRootPath(CurrentJobSpacePath, task.Id);
@@ -1075,7 +1072,7 @@ namespace Swift.Core
         /// </summary>
         /// <param name="task"></param>
         /// <returns></returns>
-        private bool BlockCheckTaskExecuteStatus(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
+        private bool BlockCheckTaskExecuteStatus(JobTask task, CancellationToken cancellationToken = default)
         {
             bool isOK = true;
 
@@ -1142,7 +1139,7 @@ namespace Swift.Core
         /// 同步任务结果
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
-        public void SyncTaskResult(CancellationToken cancellationToken = default(CancellationToken))
+        public void SyncTaskResult(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -1183,7 +1180,7 @@ namespace Swift.Core
         /// 拉取任务结果
         /// </summary>
         /// <param name="task"></param>
-        private void PullTaskResult(JobTask task, bool checkResultFile = false, CancellationToken cancellationToken = default(CancellationToken))
+        private void PullTaskResult(JobTask task, bool checkResultFile = false, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -1225,7 +1222,7 @@ namespace Swift.Core
         /// <summary>
         /// 检查任务运行状态
         /// </summary>
-        public void CheckTaskRunStatus(CancellationToken cancellationToken = default(CancellationToken))
+        public void CheckTaskRunStatus(CancellationToken cancellationToken = default)
         {
             if (TaskPlan == null)
             {
@@ -1239,20 +1236,47 @@ namespace Swift.Core
              || t.Status == EnumTaskStatus.Synced
              || t.Status == EnumTaskStatus.SyncFailed)).Count();
 
+            var executingTaskCount = TaskPlan.SelectMany(d => d.Value.Where(t => t.Status == EnumTaskStatus.Executing)).Count();
+            var failedTaskCount = TaskPlan.SelectMany(d => d.Value.Where(t => t.Status == EnumTaskStatus.Failed)).Count();
             var syncedTaskCount = TaskPlan.SelectMany(d => d.Value.Where(t => t.Status == EnumTaskStatus.Synced)).Count();
             var canceledTaskCount = TaskPlan.SelectMany(d => d.Value.Where(t => t.Status == EnumTaskStatus.Canceled)).Count();
 
+            // 如果计划制定完毕的作业，有任何一个任务正在执行，则作业进入执行状态
+            if (Status == EnumJobRecordStatus.PlanMaked)
+            {
+                if (executingTaskCount > 0)
+                {
+                    UpdateJobStatus(EnumJobRecordStatus.TaskExecuting, cancellationToken);
+                    return;
+                }
+            }
+
+            // 如果任务全部被取消，则作业也被取消
+            if (taskCount == canceledTaskCount)
+            {
+                UpdateJobStatus(EnumJobRecordStatus.Canceled, cancellationToken);
+                return;
+            }
+
+            // 只要有一个任务执行失败，则整个作业失败
+            if (failedTaskCount > 0)
+            {
+                UpdateJobStatus(EnumJobRecordStatus.TaskExecutingFailed, cancellationToken);
+                return;
+            }
+
+            // 如果任务结果全部同步，则作业状态为已同步
             if (taskCount == syncedTaskCount)
             {
                 UpdateJobStatus(EnumJobRecordStatus.TaskSynced, cancellationToken);
+                return;
             }
-            else if (taskCount == executeCompleteTaskCount)
+
+            // 如果任务为全部完成，则作业状态为TaskCompleted
+            if (taskCount == executeCompleteTaskCount)
             {
                 UpdateJobStatus(EnumJobRecordStatus.TaskCompleted, cancellationToken);
-            }
-            else if (taskCount == canceledTaskCount)
-            {
-                UpdateJobStatus(EnumJobRecordStatus.Canceled, cancellationToken);
+                return;
             }
         }
 
@@ -1260,7 +1284,7 @@ namespace Swift.Core
         /// 合并任务处理结果
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
-        public void MergeTaskResult(CancellationToken cancellationToken = default(CancellationToken))
+        public void MergeTaskResult(CancellationToken cancellationToken = default)
         {
             // 更新作业状态为TaskMerging
             UpdateJobStatus(EnumJobRecordStatus.TaskMerging, cancellationToken);
@@ -1346,7 +1370,7 @@ namespace Swift.Core
         /// <summary>
         /// 此时进程已经脱离Swift控制，只能监控运行
         /// </summary>
-        public void MointorRunCollectTaskResult(CancellationToken cancellationToken = default(CancellationToken))
+        public void MointorRunCollectTaskResult(CancellationToken cancellationToken = default)
         {
             var isExecuteOK = BlockCheckCollectTaskResultStatus(cancellationToken);
             if (isExecuteOK)
@@ -1365,7 +1389,7 @@ namespace Swift.Core
         /// 阻塞检查任务结果合并状态
         /// </summary>
         /// <returns></returns>
-        private bool BlockCheckCollectTaskResultStatus(CancellationToken cancellationToken = default(CancellationToken))
+        private bool BlockCheckCollectTaskResultStatus(CancellationToken cancellationToken = default)
         {
             bool isOK = true;
 
@@ -1483,7 +1507,7 @@ namespace Swift.Core
         /// <summary>
         /// 调用任务合并方法，由Manager调用此方法
         /// </summary>
-        public void CallCollectTaskResultMethod(CancellationToken cancellationToken = default(CancellationToken))
+        public void CallCollectTaskResultMethod(CancellationToken cancellationToken = default)
         {
             var taskMergeStatusPath = SwiftConfiguration.GetJobTaskMergeStatusPath(CurrentJobSpacePath);
 
@@ -1557,10 +1581,10 @@ namespace Swift.Core
         /// 更新作业状态
         /// </summary>
         /// <param name="status"></param>
-        public void UpdateJobStatus(EnumJobRecordStatus status, CancellationToken cancellationToken = default(CancellationToken))
+        public void UpdateJobStatus(EnumJobRecordStatus status, CancellationToken cancellationToken = default)
         {
             Cluster.ConfigCenter.TryUpdateJobStatus(this, status, out int errCode, out JobBase latestJob, cancellationToken);
-            LogWriter.Write(string.Format("更新作业记录状态结果:{0}", errCode));
+            LogWriter.Write(string.Format("更新作业记录状态结果:{0},{1}", status, errCode));
 
             if (errCode == 0 || errCode == 2)
             {
@@ -1572,7 +1596,7 @@ namespace Swift.Core
         /// 更新作业任务计划
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
-        private void UpdateJobTaskPlan(CancellationToken cancellationToken = default(CancellationToken))
+        private void UpdateJobTaskPlan(CancellationToken cancellationToken = default)
         {
             var ccJobRecord = Cluster.ConfigCenter.UpdateJobTaskPlan(this, cancellationToken);
             LogWriter.Write(string.Format("更新作业记录状态结果:{0}", ccJobRecord != null));
@@ -1585,7 +1609,7 @@ namespace Swift.Core
         /// <summary>
         /// 加载作业的任务
         /// </summary>
-        public List<JobTask> LoadTasksFromFile(CancellationToken cancellationToken = default(CancellationToken))
+        public List<JobTask> LoadTasksFromFile(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -1620,7 +1644,7 @@ namespace Swift.Core
         /// <summary>
         /// 写作业空间配置
         /// </summary>
-        private void WriteJobSpaceConfig(CancellationToken cancellationToken = default(CancellationToken))
+        private void WriteJobSpaceConfig(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 

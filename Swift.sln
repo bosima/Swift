@@ -15,7 +15,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{8D45B2
 	ProjectSection(SolutionItems) = preProject
 		Dockerfile = Dockerfile
 		.dockerignore = .dockerignore
-		Todo.txt = Todo.txt
 		docker-entrypoint.sh = docker-entrypoint.sh
 		sources.list = sources.list
 	EndProjectSection
@@ -25,6 +24,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{E570DDA1-D9F4-4D5E-B9B2-3F7ED99F43E0}"
 	ProjectSection(SolutionItems) = preProject
 		README.md = README.md
+		Todo.txt = Todo.txt
 	EndProjectSection
 EndProject
 Global

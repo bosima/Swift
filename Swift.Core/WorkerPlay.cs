@@ -326,7 +326,7 @@ namespace Swift.Core
         /// 清理脱离控制的执行任务进程
         /// </summary>
         /// <param name="taskExecuteProcess">Task execute process.</param>
-        private void CleanOutOfControlTaskExecuteProcess(IEnumerable<string[]> taskExecuteProcess, CancellationToken cancellationToken = default(CancellationToken))
+        private void CleanOutOfControlTaskExecuteProcess(IEnumerable<string[]> taskExecuteProcess, CancellationToken cancellationToken = default)
         {
             foreach (var processInfo in taskExecuteProcess)
             {
@@ -335,38 +335,38 @@ namespace Swift.Core
                 var jobId = processInfo[3];
                 var taskId = int.Parse(processInfo[4]);
 
-                LogWriter.Write(string.Format("正在处理：{0},{1},{2}", jobName, jobId, taskId));
+                LogWriter.Write(string.Format("正在处理：{0},{1},{2}", jobName, jobId, taskId), LogLevel.Debug);
 
                 var jobRecord = _cluster.ConfigCenter.GetJobRecord(jobName, jobId, _cluster, cancellationToken);
 
                 // 作业不存在了，看看任务进程还在不在
                 if (jobRecord == null)
                 {
-                    LogWriter.Write("作业记录不存在了，尝试关闭废弃的任务进程");
+                    LogWriter.Write(string.Format("作业记录不存在了，尝试关闭废弃的任务进程：{0},{1},{2}", jobName, jobId, taskId));
                     SwiftProcess.KillAbandonedTaskProcess(processId, jobName, jobId, taskId);
                     continue;
                 }
-                LogWriter.Write(string.Format("作业记录存在"));
+                LogWriter.Write(string.Format("作业记录存在"), LogLevel.Debug);
 
                 // 任务不是我的了，看看进程还在不在
                 var task = jobRecord.TaskPlan.Where(d => d.Key == _member.Id && d.Value.Any(t => t.Id == taskId))
                                 .SelectMany(d => d.Value).FirstOrDefault(t => t.Id == taskId);
                 if (task == null)
                 {
-                    LogWriter.Write("任务被重新分走了，尝试关闭废弃的任务进程");
+                    LogWriter.Write(string.Format("任务被重新分走了，尝试关闭废弃的任务进程：{0},{1},{2}", jobName, jobId, taskId));
                     SwiftProcess.KillAbandonedTaskProcess(processId, jobName, jobId, taskId);
                     continue;
                 }
-                LogWriter.Write(string.Format("任务存在"));
+                LogWriter.Write(string.Format("任务存在"), LogLevel.Debug);
 
                 // 任务非Executing状态，看看进程在不在
                 if (task.Status != EnumTaskStatus.Executing)
                 {
-                    LogWriter.Write("任务非Executing状态，尝试关闭废弃的任务进程");
+                    LogWriter.Write(string.Format("任务非Executing状态，尝试关闭废弃的任务进程：{0},{1},{2}", jobName, jobId, taskId));
                     SwiftProcess.KillAbandonedTaskProcess(processId, jobName, jobId, taskId);
                     continue;
                 }
-                LogWriter.Write(string.Format("任务在Executing状态，将继续运行"));
+                LogWriter.Write(string.Format("任务在Executing状态，将继续运行"), LogLevel.Debug);
 
             }
         }
@@ -395,6 +395,32 @@ namespace Swift.Core
         }
 
         /// <summary>
+        /// 处理任务执行失败的作业
+        /// </summary>
+        private void ProcessExecutingFailedJobs(IEnumerable<JobTask> jobTasks)
+        {
+            foreach (var jobTask in jobTasks)
+            {
+                // 取消正在运行的任务
+                if (_activedJobTasks.TryRemove(jobTask.BusinessId, out Task sysTask))
+                {
+                    var runningJobTask = (JobTask)sysTask.AsyncState;
+                    if (runningJobTask.Process != null && !runningJobTask.Process.HasExited)
+                    {
+                        LogWriter.Write("prepare kill task process because job is TaskExecutingFailed");
+                        runningJobTask.KillProcess();
+                    }
+                }
+
+                if (jobTask.Status == EnumTaskStatus.Executing)
+                {
+                    LogWriter.Write("will update task status to Canceled: " + jobTask.BusinessId);
+                    jobTask.UpdateTaskStatus(EnumTaskStatus.Canceled);
+                }
+            }
+        }
+
+        /// <summary>
         /// 处理作业
         /// </summary>
         private void ProcessJobs(CancellationToken cancellationToken)
@@ -407,11 +433,15 @@ namespace Swift.Core
                 return;
             }
 
-            // 只有任务制定完毕，或者正在执行任务的作业，才需要进一步处理
+            // 计划执行完毕的作业可能包含当前节点的任务，则需要执行
+            // 正在执行任务的作业可能包含当前节点的任务，则需要监控执行状态
+            // 取消中的作业可能包含当前节点的任务，如果任务在运行，则需要取消
+            // 任务执行失败的作业可能包含当前节点的任务，如果任务在运行，则需要取消
             var taskPlanCompletedJobs = jobs.Where(d =>
                d.Status == EnumJobRecordStatus.PlanMaked
             || d.Status == EnumJobRecordStatus.TaskExecuting
-            || d.Status==EnumJobRecordStatus.Canceling);
+            || d.Status == EnumJobRecordStatus.Canceling
+            || d.Status == EnumJobRecordStatus.TaskExecutingFailed);
 
             if (!taskPlanCompletedJobs.Any())
             {
@@ -445,6 +475,13 @@ namespace Swift.Core
                 if (job.Status == EnumJobRecordStatus.Canceling)
                 {
                     ProcessCancelingJobs(tasks);
+                    return;
+                }
+
+                // 执行失败的作业需要先处理
+                if (job.Status == EnumJobRecordStatus.TaskExecutingFailed)
+                {
+                    ProcessExecutingFailedJobs(tasks);
                     return;
                 }
 
@@ -495,7 +532,7 @@ namespace Swift.Core
         /// </summary>
         /// <param name="task">Task.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        private void ProcessJobTask(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
+        private void ProcessJobTask(JobTask task, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -545,7 +582,7 @@ namespace Swift.Core
         /// </summary>
         /// <returns><c>true</c>, if executing job task was checked, <c>false</c> otherwise.</returns>
         /// <param name="task">Task.</param>
-        private bool CheckExecutingJobTask(JobTask task, CancellationToken cancellationToken = default(CancellationToken))
+        private bool CheckExecutingJobTask(JobTask task, CancellationToken cancellationToken = default)
         {
             int processId = task.GetProcessId(cancellationToken);
 
@@ -639,7 +676,7 @@ namespace Swift.Core
         /// 确保作业空间，如未创建则创建
         /// </summary>
         /// <param name="job">Job.</param>
-        private static void EnsureJobSpace(JobBase job, CancellationToken cancellationToken = default(CancellationToken))
+        private static void EnsureJobSpace(JobBase job, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 

@@ -190,7 +190,7 @@ namespace Swift.Core
         public void UpdateTaskStatus(EnumTaskStatus status, CancellationToken cancellationToken = default(CancellationToken))
         {
             var result = Job.Cluster.ConfigCenter.TryUpdateTaskStatus(this, status, out int errCode, out JobBase latestJob, cancellationToken);
-
+            LogWriter.Write(string.Format("更新任务状态结果:{0}", errCode));
             if (errCode == 0 || errCode == 2)
             {
                 Status = status;

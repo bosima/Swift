@@ -244,7 +244,7 @@ namespace Swift.Core
         /// 清理脱离控制的任务结果合并进程
         /// </summary>
         /// <param name="collectTaskResultProcess">Collect task result process.</param>
-        private void CleanOutOfControlCollectTaskResultProcess(IEnumerable<string[]> collectTaskResultProcess, CancellationToken cancellationToken = default(CancellationToken))
+        private void CleanOutOfControlCollectTaskResultProcess(IEnumerable<string[]> collectTaskResultProcess, CancellationToken cancellationToken = default)
         {
             foreach (var processInfo in collectTaskResultProcess)
             {
@@ -280,7 +280,7 @@ namespace Swift.Core
         /// 清理脱离控制的作业分割进程
         /// </summary>
         /// <param name="jobSplitProcess">Job split process.</param>
-        private void CleanOutOfControlJobSplitProcess(IEnumerable<string[]> jobSplitProcess, CancellationToken cancellationToken = default(CancellationToken))
+        private void CleanOutOfControlJobSplitProcess(IEnumerable<string[]> jobSplitProcess, CancellationToken cancellationToken = default)
         {
             foreach (var processInfo in jobSplitProcess)
             {
@@ -354,7 +354,7 @@ namespace Swift.Core
         /// <summary>
         /// 处理作业
         /// </summary>
-        private void ProcessJobs(CancellationToken cancellationToken = default(CancellationToken))
+        private void ProcessJobs(CancellationToken cancellationToken = default)
         {
             var jobs = _cluster.GetLatestJobRecords(cancellationToken);
             if (jobs.Length <= 0)
@@ -387,7 +387,7 @@ namespace Swift.Core
 
                     if (CheckExecutingAmountReachLimit())
                     {
-                        LogWriter.Write("作业激活数已达上限。");
+                        LogWriter.Write("作业激活数已达上限。", Log.LogLevel.Debug);
                         break;
                     }
 
@@ -401,7 +401,7 @@ namespace Swift.Core
                     }
 
                     _activedJobs.TryAdd(job.BusinessId, Task.Factory.StartNew(j => ProcessJob((JobBase)j, cancellationToken), job, cancellationToken));
-                    LogWriter.Write("作业循环已将作业激活：" + job.BusinessId, Log.LogLevel.Info);
+                    LogWriter.Write("作业循环已将作业激活：" + job.BusinessId, Log.LogLevel.Debug);
 
                     hasProcessAmount++;
                 }
@@ -455,7 +455,7 @@ namespace Swift.Core
         {
             jobs = jobs.OrderBy(d => d.Status, Comparer<EnumJobRecordStatus>.Create((x, y) =>
             {
-                if (x == EnumJobRecordStatus.TaskExecuting || x == EnumJobRecordStatus.TaskMerging)
+                if (x == EnumJobRecordStatus.PlanMaking || x == EnumJobRecordStatus.TaskExecuting || x == EnumJobRecordStatus.TaskMerging)
                 {
                     return -1;
                 }
@@ -475,9 +475,12 @@ namespace Swift.Core
         /// </summary>
         /// <param name="job">Job.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        private void ProcessJob(JobBase job, CancellationToken cancellationToken = default(CancellationToken))
+        private void ProcessJob(JobBase job, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            // 重新获取作业最新信息，因为作业支持多个并行异步处理，开始处理此作业时，之前拿到的作业信息可能已经过时了
+            job = _cluster.GetJobRecord(job.Name, job.Id);
 
             // 明确为计划制定失败、任务合并失败、任务执行失败的不应该重试，应该先找找原因。
 
@@ -508,20 +511,20 @@ namespace Swift.Core
                 }
             }
 
-            // 计划制定完毕、任务正在执行或都处理完成的作业：同步任务结果
+            // 任务正在执行或都处理完成的作业：更新作业状态为任务已全部完成或任务结果已全部同步
             if (job.Status == EnumJobRecordStatus.PlanMaked
             || job.Status == EnumJobRecordStatus.TaskExecuting
-            || job.Status == EnumJobRecordStatus.TaskCompleted)
-            {
-                job.SyncTaskResult(cancellationToken);
-            }
-
-            // 任务正在执行或都处理完成的作业：更新作业状态为任务已全部完成或任务结果已全部同步
-            if (job.Status == EnumJobRecordStatus.TaskExecuting
             || job.Status == EnumJobRecordStatus.TaskCompleted
             || job.Status == EnumJobRecordStatus.Canceling)
             {
                 job.CheckTaskRunStatus(cancellationToken);
+            }
+
+            // 任务正在执行或都处理完成的作业：同步任务结果
+            if (job.Status == EnumJobRecordStatus.TaskExecuting
+            || job.Status == EnumJobRecordStatus.TaskCompleted)
+            {
+                job.SyncTaskResult(cancellationToken);
             }
 
             // 合并任务同步完成的作业：合并全部任务结果
@@ -548,7 +551,7 @@ namespace Swift.Core
         /// </summary>
         /// <returns><c>true</c>, if plan making job was checked, <c>false</c> otherwise.</returns>
         /// <param name="job">Job.</param>
-        private bool CheckPlanMakingJob(JobBase job, CancellationToken cancellationToken = default(CancellationToken))
+        private bool CheckPlanMakingJob(JobBase job, CancellationToken cancellationToken = default)
         {
             int processId = job.GetProcessId("SplitJob");
 
@@ -604,7 +607,7 @@ namespace Swift.Core
         /// </summary>
         /// <returns><c>true</c>, if plan making job was checked, <c>false</c> otherwise.</returns>
         /// <param name="job">Job.</param>
-        private bool CheckTaskMergingJob(JobBase job, CancellationToken cancellationToken = default(CancellationToken))
+        private bool CheckTaskMergingJob(JobBase job, CancellationToken cancellationToken = default)
         {
             int processId = job.GetProcessId("CollectTaskResult");
 

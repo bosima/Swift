@@ -307,7 +307,7 @@ namespace Swift.Core
         /// 定时检查成员状态回调
         /// </summary>
         /// <param name="state">State.</param>
-        private void TimedCheckMembersHealthCallback(object state, CancellationToken cancellationToken = default(CancellationToken))
+        private void TimedCheckMembersHealthCallback(object state, CancellationToken cancellationToken = default)
         {
             StopCheckMembersTimer();
 
@@ -320,7 +320,7 @@ namespace Swift.Core
         /// 检查成员健康状况
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
-        public void CheckMembersHealth(CancellationToken cancellationToken = default(CancellationToken))
+        public void CheckMembersHealth(CancellationToken cancellationToken = default)
         {
             try
             {
@@ -347,7 +347,7 @@ namespace Swift.Core
         /// 本地内存缓存节点健康状态需要另一个定时器来更新。
         /// </summary>
         /// <returns><c>true</c>, if member health was checked, <c>false</c> otherwise.</returns>
-        private bool CheckMemberHealth(CancellationToken cancellationToken = default(CancellationToken))
+        private bool CheckMemberHealth(CancellationToken cancellationToken = default)
         {
             object orignalData = null;
             bool hasChange = false;
@@ -375,7 +375,7 @@ namespace Swift.Core
         /// <param name="orignalData">Orignal data.</param>
         /// <param name="configMemberList">Config member list.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        private bool UpdateMemberListToConfigCenter(bool hasChange, object orignalData, List<MemberWrapper> configMemberList, CancellationToken cancellationToken = default(CancellationToken))
+        private bool UpdateMemberListToConfigCenter(bool hasChange, object orignalData, List<MemberWrapper> configMemberList, CancellationToken cancellationToken = default)
         {
             if (!hasChange)
             {
@@ -451,7 +451,7 @@ namespace Swift.Core
         /// <param name="configMemberList">Config member list.</param>
         /// <param name="healths">Healths.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        private bool MakeMembersStatus(List<MemberWrapper> configMemberList, Dictionary<string, bool> healths, CancellationToken cancellationToken = default(CancellationToken))
+        private bool MakeMembersStatus(List<MemberWrapper> configMemberList, Dictionary<string, bool> healths, CancellationToken cancellationToken = default)
         {
             bool isNeedUpdate = false;
 
@@ -540,7 +540,7 @@ namespace Swift.Core
         /// <summary>
         /// 开启成员健康检查Timer
         /// </summary>
-        private void StartCheckMembersTimer(CancellationToken cancellationToken = default(CancellationToken))
+        private void StartCheckMembersTimer(CancellationToken cancellationToken = default)
         {
             if (cancellationToken.IsCancellationRequested)
             {
@@ -611,7 +611,7 @@ namespace Swift.Core
         /// <summary>
         /// 刷新本地磁盘作业配置
         /// </summary>
-        private void TimedRefreshJobConfigsFromDiskCallback(object state, CancellationToken cancellationToken = default(CancellationToken))
+        private void TimedRefreshJobConfigsFromDiskCallback(object state, CancellationToken cancellationToken = default)
         {
             StopRefreshJobConfigFromDiskTimer();
 
@@ -652,7 +652,7 @@ namespace Swift.Core
         /// 从作业包更新作业配置文件到最新
         /// </summary>
         /// <param name="pkgPath">File path.</param>
-        private void UpdateLocalJobConfig(string pkgPath, CancellationToken cancellationToken = default(CancellationToken))
+        private void UpdateLocalJobConfig(string pkgPath, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -673,7 +673,7 @@ namespace Swift.Core
         /// </summary>
         /// <param name="pkgPath">Package path.</param>
         /// <param name="jsonPath">Json path.</param>
-        private void EnsureJobPackageConfigFileExists(string pkgPath, string jsonPath, CancellationToken cancellationToken = default(CancellationToken))
+        private void EnsureJobPackageConfigFileExists(string pkgPath, string jsonPath, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -691,7 +691,7 @@ namespace Swift.Core
         /// <summary>
         /// 更新本地作业配置
         /// </summary>
-        private void UpdateLocalJobConfig(JobConfig jobConfig, CancellationToken cancellationToken = default(CancellationToken))
+        private void UpdateLocalJobConfig(JobConfig jobConfig, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -733,7 +733,7 @@ namespace Swift.Core
         /// 从磁盘加载作业配置
         /// </summary>
         /// <returns></returns>
-        private List<JobConfig> LoadJobConfigsFromDisk(CancellationToken cancellationToken = default(CancellationToken))
+        private List<JobConfig> LoadJobConfigsFromDisk(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -812,7 +812,7 @@ namespace Swift.Core
         /// </summary>
         /// <param name="jobConfig"></param>
         /// <returns></returns>
-        private bool AddOrUpdateJobConfigToConfigCenter(JobConfig jobConfig, CancellationToken cancellationToken = default(CancellationToken))
+        private bool AddOrUpdateJobConfigToConfigCenter(JobConfig jobConfig, CancellationToken cancellationToken = default)
         {
             KVPair configKV = null;
 
@@ -857,7 +857,7 @@ namespace Swift.Core
         /// </summary>
         /// <param name="jobConfig"></param>
         /// <returns></returns>
-        private bool RemoveJobConfigFromConfigCenter(JobConfig jobConfig, CancellationToken cancellationToken = default(CancellationToken))
+        private bool RemoveJobConfigFromConfigCenter(JobConfig jobConfig, CancellationToken cancellationToken = default)
         {
             var jobConfigKey = string.Format("Swift/{0}/Jobs/{1}", Name, jobConfig.Name);
             return ConsulKV.DeleteTree(jobConfigKey, cancellationToken);
@@ -866,7 +866,7 @@ namespace Swift.Core
         /// <summary>
         /// 开启成员健康检查Timer
         /// </summary>
-        private void StartRefreshJobConfigFromDiskTimer(CancellationToken cancellationToken = default(CancellationToken))
+        private void StartRefreshJobConfigFromDiskTimer(CancellationToken cancellationToken = default)
         {
             if (cancellationToken.IsCancellationRequested)
             {
@@ -941,7 +941,7 @@ namespace Swift.Core
         /// 定时创建作业
         /// </summary>
         /// <param name="state"></param>
-        private void TimedCreateJobCallback(object state, CancellationToken cancellationToken = default(CancellationToken))
+        private void TimedCreateJobCallback(object state, CancellationToken cancellationToken = default)
         {
             StopCreateJobTimer();
 
@@ -987,7 +987,7 @@ namespace Swift.Core
         /// <returns>The last job record.</returns>
         /// <param name="jobConfig">Job config.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        private JobBase GetLastJobRecord(JobConfig jobConfig, CancellationToken cancellationToken = default(CancellationToken))
+        private JobBase GetLastJobRecord(JobConfig jobConfig, CancellationToken cancellationToken = default)
         {
             var lastJobRecord = ConfigCenter.GetJobRecord(jobConfig, this, cancellationToken);
             return lastJobRecord;
@@ -998,7 +998,7 @@ namespace Swift.Core
         /// </summary>
         /// <param name="jobName">Job name.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        public bool CheckAndCreateNewJobRecord(string jobName, CancellationToken cancellationToken = default(CancellationToken))
+        public bool CheckAndCreateNewJobRecord(string jobName, CancellationToken cancellationToken = default)
         {
             var jobConfig = GetJobConfig(jobName);
             return CheckAndCreateNewJobRecord(jobConfig, cancellationToken);
@@ -1009,7 +1009,7 @@ namespace Swift.Core
         /// </summary>
         /// <param name="jobConfig">Job config.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        private bool CheckAndCreateNewJobRecord(JobConfig jobConfig, CancellationToken cancellationToken = default(CancellationToken))
+        private bool CheckAndCreateNewJobRecord(JobConfig jobConfig, CancellationToken cancellationToken = default)
         {
             lock (jobCreateLocker)
             {
@@ -1036,7 +1036,7 @@ namespace Swift.Core
         /// <summary>
         /// 开启作业创建Timer
         /// </summary>
-        private void StartCreateJobTimer(CancellationToken cancellationToken = default(CancellationToken))
+        private void StartCreateJobTimer(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -1087,7 +1087,7 @@ namespace Swift.Core
         /// 获取最近的工人数组
         /// </summary>
         /// <returns>The manager.</returns>
-        public Member[] GetLatestWorkers(CancellationToken cancellationToken = default(CancellationToken))
+        public Member[] GetLatestWorkers(CancellationToken cancellationToken = default)
         {
             var key = GetManagerKey();
             var managerId = ConsulKV.GetValueString(key, cancellationToken);
@@ -1099,7 +1099,7 @@ namespace Swift.Core
         /// 获取最新的成员信息
         /// </summary>
         /// <returns>The current members.</returns>
-        public Member[] GetLatestMembers(CancellationToken cancellationToken = default(CancellationToken))
+        public Member[] GetLatestMembers(CancellationToken cancellationToken = default)
         {
             lock (membersLocker)
             {
@@ -1119,7 +1119,7 @@ namespace Swift.Core
         /// <summary>
         /// 从Consul获取集群成员
         /// </summary>
-        private List<Member> GetMembersFromConfigCenter(CancellationToken cancellationToken = default(CancellationToken))
+        private List<Member> GetMembersFromConfigCenter(CancellationToken cancellationToken = default)
         {
             var memberKey = string.Format("Swift/{0}/Members", Name);
             KVPair memberKV = ConsulKV.Get(memberKey, cancellationToken);
@@ -1150,7 +1150,7 @@ namespace Swift.Core
         /// 移除作业
         /// </summary>
         /// <param name="jobConfig">Job config.</param>
-        public void RemoveJobConfig(JobConfig jobConfig, CancellationToken cancellationToken = default(CancellationToken))
+        public void RemoveJobConfig(JobConfig jobConfig, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -1316,7 +1316,7 @@ namespace Swift.Core
         /// </summary>
         /// <returns>The removed job configs.</returns>
         /// <param name="consulJobConfigs">Consul job configs.</param>
-        private List<JobConfig> GetRemovedJobConfigs(List<JobConfig> consulJobConfigs, CancellationToken cancellationToken = default(CancellationToken))
+        private List<JobConfig> GetRemovedJobConfigs(List<JobConfig> consulJobConfigs, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -1339,7 +1339,7 @@ namespace Swift.Core
         /// <returns>The new job configs.</returns>
         /// <param name="consulJobConfigs">Consul job configs.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        private List<JobConfig> GetNewJobConfigs(List<JobConfig> consulJobConfigs, CancellationToken cancellationToken = default(CancellationToken))
+        private List<JobConfig> GetNewJobConfigs(List<JobConfig> consulJobConfigs, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -1361,7 +1361,7 @@ namespace Swift.Core
         /// </summary>
         /// <param name="removeJobConfigList">Remove job config list.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        private void ProcessRemovedJobConfig(List<JobConfig> removeJobConfigList, CancellationToken cancellationToken = default(CancellationToken))
+        private void ProcessRemovedJobConfig(List<JobConfig> removeJobConfigList, CancellationToken cancellationToken = default)
         {
             if (removeJobConfigList.Count > 0)
             {
@@ -1385,7 +1385,7 @@ namespace Swift.Core
         /// </summary>
         /// <param name="newJobConfigList">New job config list.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        private void ProcessNewJobConfigs(List<JobConfig> newJobConfigList, CancellationToken cancellationToken = default(CancellationToken))
+        private void ProcessNewJobConfigs(List<JobConfig> newJobConfigList, CancellationToken cancellationToken = default)
         {
             foreach (var newJobConfig in newJobConfigList)
             {
@@ -1406,7 +1406,7 @@ namespace Swift.Core
         /// </summary>
         /// <param name="consulJobConfigs">Consul job configs.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        private void ProcessChangedJobConfigs(List<JobConfig> consulJobConfigs, CancellationToken cancellationToken = default(CancellationToken))
+        private void ProcessChangedJobConfigs(List<JobConfig> consulJobConfigs, CancellationToken cancellationToken = default)
         {
             for (int i = jobConfigs.Count - 1; i >= 0; i--)
             {
@@ -1438,7 +1438,7 @@ namespace Swift.Core
         /// 从配置中心获取集群的所有作业配置
         /// </summary>
         /// <returns></returns>
-        private List<JobConfig> GetJobConfigsFromConfigCenter(CancellationToken cancellationToken = default(CancellationToken))
+        private List<JobConfig> GetJobConfigsFromConfigCenter(CancellationToken cancellationToken = default)
         {
             List<JobConfig> consulJobConfigs = new List<JobConfig>();
 
@@ -1513,16 +1513,16 @@ namespace Swift.Core
         /// <returns>The job record.</returns>
         /// <param name="jobName">Job name.</param>
         /// <param name="jobId">Job identifier.</param>
-        private JobBase GetJobRecord(string jobName, string jobId)
+        public JobBase GetJobRecord(string jobName, string jobId)
         {
-            return configCenter.GetJobRecord(jobName, jobId, this, default(CancellationToken));
+            return configCenter.GetJobRecord(jobName, jobId, this, default);
         }
 
         /// <summary>
         /// 获取最新的作业记录数组
         /// </summary>
         /// <returns>The current jobs.</returns>
-        public JobBase[] GetLatestJobRecords(CancellationToken cancellationToken = default(CancellationToken))
+        public JobBase[] GetLatestJobRecords(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -1588,7 +1588,7 @@ namespace Swift.Core
         /// <summary>
         /// 执行异步事件处理
         /// </summary>
-        private void AsyncDoEventHandler(Action action, CancellationToken cancellationToken = default(CancellationToken))
+        private void AsyncDoEventHandler(Action action, CancellationToken cancellationToken = default)
         {
             Task.Factory.StartNew(action, cancellationToken);
         }
