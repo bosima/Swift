@@ -2,7 +2,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>Library</OutputType>
-        <TargetFramework>netcoreapp2.1</TargetFramework>
+        <TargetFramework>netcoreapp3.1</TargetFramework>
         <Authors>bosima</Authors>
         <Description>Swift演示程序。</Description>
         <FileVersion>0.1.0</FileVersion>

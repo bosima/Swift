@@ -11,9 +11,9 @@ using Swift.Core.Log;
 namespace Swift.Core
 {
     /// <summary>
-    /// 工人剧本
+    /// 工人
     /// </summary>
-    public class WorkerPlay
+    public class Worker
     {
         private Member _member;
         private Cluster _cluster;
@@ -26,11 +26,11 @@ namespace Swift.Core
         private readonly int _executeAmountLimit;
         private readonly ConcurrentDictionary<string, Task> _activedJobTasks = new ConcurrentDictionary<string, Task>();
 
-        public WorkerPlay(Member member)
+        public Worker(Member member)
         {
             _member = member;
             _cluster = _member.Cluster;
-            _executeAmountLimit = Environment.ProcessorCount;
+            _executeAmountLimit = member.ConcurrentExecuteAmountLimit;
             _jobProcessThreadCts = new CancellationTokenSource();
         }
 
@@ -277,7 +277,7 @@ namespace Swift.Core
             }
 
             // 获取正在运行的任务进程
-            var taskExecuteProcess = processList.Where(d => d.GetValue(0).ToString() == "ExecuteTask");
+            IEnumerable<string[]> taskExecuteProcess = processList.Where(d => d.GetValue(0).ToString() == "ExecuteTask");
             if (taskExecuteProcess.Any())
             {
                 CleanOutOfControlTaskExecuteProcess(taskExecuteProcess);
@@ -290,16 +290,19 @@ namespace Swift.Core
         /// <param name="collectTaskResultProcess">Collect task result process.</param>
         private void CleanOutOfControlCollectTaskResultProcess(IEnumerable<string[]> collectTaskResultProcess)
         {
-            LogWriter.Write("Worker不应该执行任务合并进程，他们都应该被Kill");
-
-            foreach (var processInfo in collectTaskResultProcess)
+            if (_member.Id != _cluster.Manager.Id)
             {
-                var processId = int.Parse(processInfo[1]);
-                var jobName = processInfo[2];
-                var jobId = processInfo[3];
+                LogWriter.Write("非Manager节点不应该执行任务合并进程，他们都应该被Kill");
 
-                LogWriter.Write(string.Format("正在处理：{0},{1}", jobName, jobId));
-                SwiftProcess.KillAbandonedCollectTaskResultProcess(processId, jobName, jobId);
+                foreach (var processInfo in collectTaskResultProcess)
+                {
+                    var processId = int.Parse(processInfo[1]);
+                    var jobName = processInfo[2];
+                    var jobId = processInfo[3];
+
+                    LogWriter.Write(string.Format("正在处理：{0},{1}", jobName, jobId));
+                    SwiftProcess.KillAbandonedCollectTaskResultProcess(processId, jobName, jobId);
+                }
             }
         }
 
@@ -309,16 +312,19 @@ namespace Swift.Core
         /// <param name="jobSplitProcess">Job split process.</param>
         private void CleanOutOfControlJobSplitProcess(IEnumerable<string[]> jobSplitProcess)
         {
-            LogWriter.Write("Worker不应该执行作业分割进程，他们都应该被Kill");
-
-            foreach (var processInfo in jobSplitProcess)
+            if (_member.Id != _cluster.Manager.Id)
             {
-                var processId = int.Parse(processInfo[1]);
-                var jobName = processInfo[2];
-                var jobId = processInfo[3];
+                LogWriter.Write("非Manager节点不应该执行作业分割进程，他们都应该被Kill");
 
-                LogWriter.Write(string.Format("正在处理：{0},{1}", jobName, jobId));
-                SwiftProcess.KillAbandonedJobSplitProcess(processId, jobName, jobId);
+                foreach (var processInfo in jobSplitProcess)
+                {
+                    var processId = int.Parse(processInfo[1]);
+                    var jobName = processInfo[2];
+                    var jobId = processInfo[3];
+
+                    LogWriter.Write(string.Format("正在处理：{0},{1}", jobName, jobId));
+                    SwiftProcess.KillAbandonedJobSplitProcess(processId, jobName, jobId);
+                }
             }
         }
 

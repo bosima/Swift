@@ -1,5 +1,5 @@
 ﻿using System.Collections.Generic;
-using Microsoft.AspNetCore.Http.Internal;
+using Microsoft.AspNetCore.Http;
 using Swift.Core;
 
 namespace Swift.Management.Swift

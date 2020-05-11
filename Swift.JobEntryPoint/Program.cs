@@ -9,19 +9,6 @@ namespace Swift.JobEntryPoint
 {
     class Program
     {
-        private static JobBase CreateJobInstance(string jobClassInfo, JobWrapper jobWrapper)
-        {
-            var jobClass = jobClassInfo.Split(',');
-            var jobClassFile = Path.Combine(jobWrapper.CurrentJobSpacePath, jobClass[0]);
-            var jobClassName = jobClass[1];
-            Assembly assembly = System.Reflection.Assembly.LoadFrom(jobClassFile);
-            Type type = assembly.GetType(jobClassName);
-            object obj = Activator.CreateInstance(type, true);
-            var job = (JobBase)obj;
-            job.CopyMetaFrom(jobWrapper);
-            return job;
-        }
-
         static void Main(string[] args)
         {
             var paras = ResolveArguments(args);
@@ -29,8 +16,8 @@ namespace Swift.JobEntryPoint
             // 分割作业为不同的任务
             if (paras.ContainsKey("-d"))
             {
-                var jobConfigPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "job.json");
-
+                var jobSpacePath = paras["-jp"];
+                var jobConfigPath = Path.Combine(jobSpacePath, "job.json");
                 var jobConfigJson = File.ReadAllText(jobConfigPath, Encoding.UTF8);
                 var jobWrapper = JobBase.Deserialize(jobConfigJson, null);
                 var demoJob = CreateJobInstance(jobWrapper.JobClassName, jobWrapper);
@@ -47,15 +34,16 @@ namespace Swift.JobEntryPoint
                 }
 
                 var taskId = paras["-t"];
+                var jobSpacePath = paras["-jp"];
 
                 // 读取作业配置，创建当前作业的实例
-                var jobConfigPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "job.json");
+                var jobConfigPath = Path.Combine(jobSpacePath, "job.json");
                 var jobConfigJson = File.ReadAllText(jobConfigPath, Encoding.UTF8);
                 var jobWrapper = JobBase.Deserialize(jobConfigJson, null);
                 var demoJob = CreateJobInstance(jobWrapper.JobClassName, jobWrapper);
 
                 // 读取任务配置，创建当前任务的实例
-                var taskConfigPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tasks", taskId, "task.json");
+                var taskConfigPath = Path.Combine(jobSpacePath, "tasks", taskId, "task.json");
                 var task = JobTask.CreateInstance(taskConfigPath);
                 task.Job = jobWrapper;
                 task.LoadRequirement();
@@ -66,13 +54,27 @@ namespace Swift.JobEntryPoint
             if (paras.ContainsKey("-m"))
             {
                 // 读取作业配置，创建当前作业的实例
-                var jobConfigPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "job.json");
+                var jobSpacePath = paras["-jp"];
+                var jobConfigPath = Path.Combine(jobSpacePath, "job.json");
                 var jobConfigJson = File.ReadAllText(jobConfigPath, Encoding.UTF8);
                 var jobWrapper = JobBase.Deserialize(jobConfigJson, null);
                 var demoJob = CreateJobInstance(jobWrapper.JobClassName, jobWrapper);
 
                 demoJob.CollectTaskResults();
             }
+        }
+
+        private static JobBase CreateJobInstance(string jobClassInfo, JobWrapper jobWrapper)
+        {
+            var jobClass = jobClassInfo.Split(',');
+            var jobClassFile = Path.Combine(jobWrapper.CurrentJobProgramPath, jobClass[0]);
+            var jobClassName = jobClass[1];
+            Assembly assembly = System.Reflection.Assembly.LoadFrom(jobClassFile);
+            Type type = assembly.GetType(jobClassName);
+            object obj = Activator.CreateInstance(type, true);
+            var job = (JobBase)obj;
+            job.CopyMetaFrom(jobWrapper);
+            return job;
         }
 
         /// <summary>

@@ -130,6 +130,18 @@ namespace Swift.Core
         }
 
         /// <summary>
+        /// 当前作业程序的路径
+        /// </summary>
+        [JsonIgnore]
+        public string CurrentJobProgramPath
+        {
+            get
+            {
+                return SwiftConfiguration.GetJobProgramPath(Name, Version);
+            }
+        }
+
+        /// <summary>
         /// 当前作业所有文件的物理路径
         /// </summary>
         [JsonIgnore]
@@ -623,28 +635,31 @@ namespace Swift.Core
         /// </summary>
         public void CreateJobSpace(CancellationToken cancellationToken = default)
         {
+            ExtractJobProgramIfAbsent(cancellationToken);
+
             ClearJobSpace(cancellationToken);
 
             CreateJobSpaceDirectory(cancellationToken);
-
-            ExtractJobPackageToJobSpace(cancellationToken);
 
             WriteJobSpaceConfig(cancellationToken);
         }
 
         /// <summary>
-        /// 解压作业包到作业空间
+        /// 如果作业程序还没有提取过，先提取出来
         /// </summary>
-        private void ExtractJobPackageToJobSpace(CancellationToken cancellationToken = default)
+        /// <param name="cancellationToken"></param>
+        private void ExtractJobProgramIfAbsent(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // 将程序包解压到当前作业的目录
             var pkgPath = SwiftConfiguration.GetJobPackagePath(Name, Version);
             var jobPkgLockName = SwiftConfiguration.GetFileOperateLockName(pkgPath);
             lock (string.Intern(jobPkgLockName))
             {
-                ZipFile.ExtractToDirectory(pkgPath, CurrentJobSpacePath, true);
+                if (!Directory.Exists(CurrentJobProgramPath))
+                {
+                    ZipFile.ExtractToDirectory(pkgPath, CurrentJobProgramPath, true);
+                }
             }
         }
 
@@ -681,7 +696,7 @@ namespace Swift.Core
             }
             catch (DirectoryNotFoundException ex)
             {
-                LogWriter.Write("作业空间还不存在，无需清空", ex, Log.LogLevel.Debug);
+                LogWriter.Write("作业空间还不存在，无需清空", ex, Log.LogLevel.Warn);
             }
         }
 
@@ -1202,21 +1217,23 @@ namespace Swift.Core
             }
 
             // worker变为管理员
-            if (member.Id == Cluster.CurrentMember.Id)
+            if (member.Id != Cluster.CurrentMember.Id)
             {
-                throw new MemberNotFoundException(string.Format("成员[{0}]自己完成的任务，不用拉取。", memberId));
-            }
-
-            // 下载任务结果
-            Cluster.CurrentMember.Download(member, "download/task/result",
-                new Dictionary<string, string>
-                {
+                // 下载任务结果
+                Cluster.CurrentMember.Download(member, "download/task/result",
+                    new Dictionary<string, string>
+                    {
                     { "jobName", task.Job.Name },
                     { "jobId", task.Job.Id },
                     { "taskId", task.Id.ToString() },
-                },
-                cancellationToken
-            );
+                    },
+                    cancellationToken
+                );
+            }
+            else
+            {
+                LogWriter.Write("成员自己完成的任务，跳过拉取");
+            }
         }
 
         /// <summary>

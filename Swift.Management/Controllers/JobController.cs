@@ -5,7 +5,6 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Internal;
 using Microsoft.AspNetCore.Mvc;
 using Swift.Management.Swift;
 

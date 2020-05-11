@@ -126,6 +126,27 @@ namespace Swift.Core
         }
 
         /// <summary>
+        /// 获取指定作业所有运行程序文件的物理路径
+        /// </summary>
+        /// <returns>The job program root path.</returns>
+        /// <param name="jobName">作业名称</param>
+        public static string GetJobProgramRootPath(string jobName)
+        {
+            return Path.Combine(GetJobRootPath(jobName), "programs");
+        }
+
+        /// <summary>
+        /// 获取指定作业指定版本程序文件的物理路径
+        /// </summary>
+        /// <returns>The job program path.</returns>
+        /// <param name="jobName">作业名称</param>
+        /// <param name="jobVersion">作业版本</param>
+        public static string GetJobProgramPath(string jobName, string jobVersion)
+        {
+            return Path.Combine(GetJobProgramRootPath(jobName), jobVersion);
+        }
+
+        /// <summary>
         /// 获取作业记录的物理路径
         /// </summary>
         /// <returns>The job record root path.</returns>

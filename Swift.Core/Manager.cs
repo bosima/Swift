@@ -9,9 +9,9 @@ using Swift.Core.Log;
 namespace Swift.Core
 {
     /// <summary>
-    /// 管理员剧本
+    /// Manager
     /// </summary>
-    public class ManagerPlay
+    public class Manager
     {
         private Member _member;
         private Cluster _cluster;
@@ -27,11 +27,11 @@ namespace Swift.Core
         /// <summary>
         /// 构造函数
         /// </summary>
-        public ManagerPlay(Member member)
+        public Manager(Member member)
         {
             _member = member;
             _cluster = _member.Cluster;
-            _executeAmountLimit = Environment.ProcessorCount;
+            _executeAmountLimit = member.ConcurrentExecuteAmountLimit;
         }
 
         /// <summary>
@@ -39,7 +39,11 @@ namespace Swift.Core
         /// </summary>
         public void Start()
         {
-            LogWriter.Write("manager play starting ...");
+            LogWriter.Write("Manager开始启动...");
+
+            // 考虑到一些涉及成员的操作，比如作业任务重新分配，上个Manager节点可能永久下线，
+            // 应该首先执行这个健康检查，以避免进入不可用节点超时处理机制，耽误时间。
+            _cluster.CheckMembersHealth();
 
             // 启动的时候先清理一次，然后循环执行
             CleanOutOfControlChildProcess();
@@ -58,7 +62,7 @@ namespace Swift.Core
             _cleanOutOfControlChildProcessThreadCts = new CancellationTokenSource();
             StartCleanOutOfControlChildProcess(_cleanOutOfControlChildProcessThreadCts.Token);
 
-            LogWriter.Write("manager play started");
+            LogWriter.Write("Manager启动完毕。");
         }
 
         /// <summary>
@@ -211,7 +215,7 @@ namespace Swift.Core
             }
 
             // 获取正在运行的任务进程
-            var taskExecuteProcess = processList.Where(d => d.GetValue(0).ToString() == "ExecuteTask");
+            IEnumerable<string[]> taskExecuteProcess = processList.Where(d => d.GetValue(0).ToString() == "ExecuteTask");
             if (taskExecuteProcess.Any())
             {
                 CleanOutOfControlTaskExecuteProcess(taskExecuteProcess);
@@ -224,10 +228,8 @@ namespace Swift.Core
         /// 清理脱离控制的执行任务进程
         /// </summary>
         /// <param name="taskExecuteProcess">Task execute process.</param>
-        private void CleanOutOfControlTaskExecuteProcess(IEnumerable<string[]> taskExecuteProcess)
+        private void CleanOutOfControlTaskExecuteProcess(IEnumerable<string[]> taskExecuteProcess, CancellationToken cancellationToken = default)
         {
-            LogWriter.Write("Manager不应该执行任务进程，他们都应该被Kill");
-
             foreach (var processInfo in taskExecuteProcess)
             {
                 var processId = int.Parse(processInfo[1]);
@@ -235,10 +237,42 @@ namespace Swift.Core
                 var jobId = processInfo[3];
                 var taskId = int.Parse(processInfo[4]);
 
-                LogWriter.Write(string.Format("正在处理：{0},{1},{2}", jobName, jobId, taskId));
-                SwiftProcess.KillAbandonedTaskProcess(processId, jobName, jobId, taskId);
+                LogWriter.Write(string.Format("正在处理：{0},{1},{2}", jobName, jobId, taskId), LogLevel.Debug);
+
+                var jobRecord = _cluster.ConfigCenter.GetJobRecord(jobName, jobId, _cluster, cancellationToken);
+
+                // 作业不存在了，看看任务进程还在不在
+                if (jobRecord == null)
+                {
+                    LogWriter.Write(string.Format("作业记录不存在了，尝试关闭废弃的任务进程：{0},{1},{2}", jobName, jobId, taskId));
+                    SwiftProcess.KillAbandonedTaskProcess(processId, jobName, jobId, taskId);
+                    continue;
+                }
+                LogWriter.Write(string.Format("作业记录存在"), LogLevel.Debug);
+
+                // 任务不是我的了，看看进程还在不在
+                var task = jobRecord.TaskPlan.Where(d => d.Key == _member.Id && d.Value.Any(t => t.Id == taskId))
+                                .SelectMany(d => d.Value).FirstOrDefault(t => t.Id == taskId);
+                if (task == null)
+                {
+                    LogWriter.Write(string.Format("任务被重新分走了，尝试关闭废弃的任务进程：{0},{1},{2}", jobName, jobId, taskId));
+                    SwiftProcess.KillAbandonedTaskProcess(processId, jobName, jobId, taskId);
+                    continue;
+                }
+                LogWriter.Write(string.Format("任务存在"), LogLevel.Debug);
+
+                // 任务非Executing状态，看看进程在不在
+                if (task.Status != EnumTaskStatus.Executing)
+                {
+                    LogWriter.Write(string.Format("任务非Executing状态，尝试关闭废弃的任务进程：{0},{1},{2}", jobName, jobId, taskId));
+                    SwiftProcess.KillAbandonedTaskProcess(processId, jobName, jobId, taskId);
+                    continue;
+                }
+                LogWriter.Write(string.Format("任务在Executing状态，将继续运行"), LogLevel.Debug);
+
             }
         }
+
 
         /// <summary>
         /// 清理脱离控制的任务结果合并进程
@@ -359,18 +393,18 @@ namespace Swift.Core
             var jobs = _cluster.GetLatestJobRecords(cancellationToken);
             if (jobs.Length <= 0)
             {
-                LogWriter.Write("no job be happy", LogLevel.Debug);
+                LogWriter.Write("没有作业记录需要处理，偷着乐吧", LogLevel.Debug);
                 return;
             }
+
+            LogWriter.Write($"发现待处理作业记录数量: {jobs.Length}", LogLevel.Debug);
 
             var workers = _cluster.GetLatestWorkers(cancellationToken);
             if (workers == null || !workers.Any(d => d.Status == 1))
             {
-                LogWriter.Write("no worker do nothing", LogLevel.Debug);
+                LogWriter.Write("没有工人，光感司令什么也干不了", LogLevel.Debug);
                 return;
             }
-
-            LogWriter.Write(string.Format("the number of jobs: {0}", jobs.Length), LogLevel.Debug);
 
             // 先处理取消中的作业
             ProcessCancelingJobs(jobs);

@@ -213,6 +213,7 @@ namespace Swift.Core
         /// <returns></returns>
         private bool TryRegisterMemberToConfigCenter(Member member, out List<Member> latestMemberList)
         {
+            var executeAmountLimit = ResourceManager.GetCurrentExecuteAmountLimit();
             latestMemberList = null;
 
             List<Member> memberList = GetMembersFromConfigCenter();
@@ -220,12 +221,14 @@ namespace Swift.Core
             Member historyMember = memberList.FirstOrDefault(d => d.Id == member.Id);
             if (historyMember != null)
             {
+                historyMember.ConcurrentExecuteAmountLimit = executeAmountLimit;
                 historyMember.Status = 1;
                 historyMember.OnlineTime = DateTime.Now;
                 historyMember.Cluster = this;
             }
             else
             {
+                member.ConcurrentExecuteAmountLimit = executeAmountLimit;
                 member.FirstRegisterTime = DateTime.Now;
                 member.Cluster = this;
                 memberList.Add(member);
@@ -324,7 +327,7 @@ namespace Swift.Core
         {
             try
             {
-                LogWriter.Write("check member health beginning ...");
+                LogWriter.Write("check member health begining ...");
 
                 // 检查成员健康状态，如果成员健康状态变化则尝试更新到Consul KV，直到成员状态和Consul KV中一致。
                 while (!CheckMemberHealth(cancellationToken))
@@ -1089,10 +1092,12 @@ namespace Swift.Core
         /// <returns>The manager.</returns>
         public Member[] GetLatestWorkers(CancellationToken cancellationToken = default)
         {
-            var key = GetManagerKey();
-            var managerId = ConsulKV.GetValueString(key, cancellationToken);
+            //var key = GetManagerKey();
+            //var managerId = ConsulKV.GetValueString(key, cancellationToken);
+            //return GetLatestMembers().Where(d => d.Id != managerId).ToArray();
 
-            return GetLatestMembers().Where(d => d.Id != managerId).ToArray();
+            // 已修改为所有节点上都启动一个Worker
+            return GetLatestMembers();
         }
 
         /// <summary>

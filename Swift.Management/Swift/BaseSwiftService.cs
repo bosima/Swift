@@ -4,7 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net;
-using Microsoft.AspNetCore.Http.Internal;
+using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
 using Swift.Core;
 

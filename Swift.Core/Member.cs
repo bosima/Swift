@@ -37,14 +37,14 @@ namespace Swift.Core
         private CancellationTokenSource _managerElectionWatchThreadCts;
 
         /// <summary>
-        /// 管理员剧本
+        /// Manager实例
         /// </summary>
-        private ManagerPlay _managerPlay;
+        private Manager _manager;
 
         /// <summary>
-        /// 工人剧本
+        /// Worker实例
         /// </summary>
-        private WorkerPlay _workerPlay;
+        private Worker _worker;
 
         private readonly object _roleTransferLocker = new object();
 
@@ -64,6 +64,18 @@ namespace Swift.Core
         /// 成员状态:0下线 1在线
         /// </summary>
         public int Status { get; set; }
+
+        /// <summary>
+        /// 并行执行数量限制
+        /// </summary>
+        /// <value>The execute amount limit.</value>
+        public int ConcurrentExecuteAmountLimit { get; set; }
+
+        /// <summary>
+        /// 正在执行数量
+        /// </summary>
+        /// <value>The execute amount limit.</value>
+        public int ExecutingAmount { get; set; }
 
         /// <summary>
         /// 首次注册时间
@@ -111,6 +123,14 @@ namespace Swift.Core
             Cluster.OnJobConfigUpdateEventHandler += OnJobConfigUpdate;
             Cluster.OnJobConfigRemoveEventHandler += OnJobConfigRemove;
 
+            // 所有节点启动一个Worker，即使只有一个节点也能工作，虽然意义不大
+            if (_worker == null)
+            {
+                _worker = new Worker(this);
+                _worker.Start();
+            }
+
+            // 启动Manager选举
             _managerElectionWatchThreadCts = new CancellationTokenSource();
             _managerElectionWatchThread = new Thread(() =>
             {
@@ -122,7 +142,7 @@ namespace Swift.Core
             };
             _managerElectionWatchThread.Start();
 
-            LogWriter.Write("member opened");
+            LogWriter.Write("Member已启动");
         }
 
         /// <summary>
@@ -139,21 +159,21 @@ namespace Swift.Core
                 }
                 catch (Exception ex)
                 {
-                    LogWriter.Write("wait for manager election thread exit go exception", ex, LogLevel.Warn);
+                    LogWriter.Write("等待Manager选举线程退出时发生异常", ex, LogLevel.Warn);
                 }
             }
-            LogWriter.Write("clean manager elections thread has exited");
+            LogWriter.Write("清理Manager选举线程完毕");
 
-            if (_managerPlay != null)
+            if (_manager != null)
             {
-                _managerPlay.Stop();
-                _managerPlay = null;
+                _manager.Stop();
+                _manager = null;
             }
 
-            if (_workerPlay != null)
+            if (_worker != null)
             {
-                _workerPlay.Stop();
-                _workerPlay = null;
+                _worker.Stop();
+                _worker = null;
             }
 
             StopCommunicator();
@@ -224,43 +244,24 @@ namespace Swift.Core
         /// <param name="currentMemberId">Current member identifier.</param>
         private void HandleManagerElectCompleted(bool result, string currentMemberId)
         {
-            LogWriter.Write(string.Format("current member elect result: {0}，New Manager is: {1}", result, currentMemberId));
+            LogWriter.Write($"当前成员选举Manager结果: {result}，新Manager是: {currentMemberId}");
 
             lock (_roleTransferLocker)
             {
                 if (result)
                 {
-                    // 本机选举为Manager
-                    if (_workerPlay != null)
+                    if (_manager == null)
                     {
-                        _workerPlay.Stop();
-                        _workerPlay = null;
-                    }
-
-                    // 剧本切换后，考虑到一些涉及成员的操作，比如作业任务重新分配，上个Manager节点可能永久下线，
-                    // 应该首先执行这个健康检查，以避免进入不可用节点超时处理机制，耽误时间。
-                    // 在这里放个这可能有点怪，如何处理呢？
-                    Cluster.CheckMembersHealth();
-
-                    if (_managerPlay == null)
-                    {
-                        _managerPlay = new ManagerPlay(this);
-                        _managerPlay.Start();
+                        _manager = new Manager(this);
+                        _manager.Start();
                     }
                 }
                 else
                 {
-                    // 本机未能选举为Manager
-                    if (_managerPlay != null)
+                    if (_manager != null)
                     {
-                        _managerPlay.Stop();
-                        _managerPlay = null;
-                    }
-
-                    if (_workerPlay == null)
-                    {
-                        _workerPlay = new WorkerPlay(this);
-                        _workerPlay.Start();
+                        _manager.Stop();
+                        _manager = null;
                     }
                 }
             }

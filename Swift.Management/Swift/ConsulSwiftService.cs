@@ -6,7 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using Consul;
-using Microsoft.AspNetCore.Http.Internal;
+using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
 using Swift.Core;
 using Swift.Core.Consul;

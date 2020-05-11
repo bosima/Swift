@@ -759,21 +759,23 @@ namespace Swift.Core
         /// </summary>
         public void SplitJob(CancellationToken cancellationToken = default(CancellationToken))
         {
+            // todo 增加作业空间路径参数，因为程序文件只有1份了，具体作业执行时需要获取对应的配置和需求
+
             // 当前作业执行命令
             var fileName = _job.FileName;
-            var paras = string.Format("-d -jr {0} -jn {1}", _job.Id, _job.Name);
+            var paras = string.Format("-d -jr {0} -jn {1} -jp {2}", _job.Id, _job.Name, _job.CurrentJobSpacePath);
 
             var commandParas = FormatProcessCommandParas(fileName, paras);
             fileName = commandParas.Item1;
             paras = commandParas.Item2;
 
-            var commandLine = string.Format("{0}:{1}:{2}", _job.CurrentJobSpacePath, fileName, paras);
+            var commandLine = string.Format("{0}:{1}:{2}", _job.CurrentJobProgramPath, fileName, paras);
 
             LogWriter.Write(string.Format("SwiftProcess->SplitJob Command: {0}", commandLine), Log.LogLevel.Debug);
 
             using (var ctsTokenRegistion = cancellationToken.Register(Kill))
             {
-                Execute("SplitJob", _job.CurrentJobSpacePath, fileName, paras);
+                Execute("SplitJob", _job.CurrentJobProgramPath, fileName, paras);
             }
         }
 
@@ -784,20 +786,20 @@ namespace Swift.Core
         {
             // 当前作业执行命令
             var fileName = _job.FileName;
-            var paras = string.Format(" -p -t {0} -jr {1} -jn {2}", _jobTask.Id, _job.Id, _job.Name);
+            var paras = string.Format(" -p -t {0} -jr {1} -jn {2} -jp {3}", _jobTask.Id, _job.Id, _job.Name, _job.CurrentJobSpacePath);
 
             var commandParas = FormatProcessCommandParas(fileName, paras);
             LogWriter.Write(string.Format("已格式化命令行参数"), Log.LogLevel.Trace);
             fileName = commandParas.Item1;
             paras = commandParas.Item2;
 
-            var commandLine = string.Format("{0}:{1}:{2}", _job.CurrentJobSpacePath, fileName, paras);
+            var commandLine = string.Format("{0}:{1}:{2}", _job.CurrentJobProgramPath, fileName, paras);
 
             LogWriter.Write(string.Format("SwiftProcess->ExecuteTask Command: {0}", commandLine), Log.LogLevel.Debug);
 
             using (var ctsTokenRegistion = cancellationToken.Register(Kill))
             {
-                Execute("ExecuteTask", _job.CurrentJobSpacePath, fileName, paras);
+                Execute("ExecuteTask", _job.CurrentJobProgramPath, fileName, paras);
             }
         }
 
@@ -808,20 +810,20 @@ namespace Swift.Core
         {
             // 当前作业执行命令
             var fileName = _job.FileName;
-            var paras = string.Format(" -m -jr {0} -jn {1}", _job.Id, _job.Name);
+            var paras = string.Format(" -m -jr {0} -jn {1} -jp {2}", _job.Id, _job.Name, _job.CurrentJobSpacePath);
 
             var commandParas = FormatProcessCommandParas(fileName, paras);
             LogWriter.Write(string.Format("已格式化命令行参数"), Log.LogLevel.Trace);
             fileName = commandParas.Item1;
             paras = commandParas.Item2;
 
-            var commandLine = string.Format("{0}:{1}:{2}", _job.CurrentJobSpacePath, fileName, paras);
+            var commandLine = string.Format("{0}:{1}:{2}", _job.CurrentJobProgramPath, fileName, paras);
 
             LogWriter.Write(string.Format("SwiftProcess->CollectTaskResult Command: {0}", commandLine), Log.LogLevel.Debug);
 
             using (var ctsTokenRegistion = cancellationToken.Register(Kill))
             {
-                Execute("CollectTaskResult", _job.CurrentJobSpacePath, fileName, paras);
+                Execute("CollectTaskResult", _job.CurrentJobProgramPath, fileName, paras);
             }
         }
 
@@ -848,7 +850,7 @@ namespace Swift.Core
             }
             else
             {
-                throw new NotSupportedException("not supported exe type: " + _job.ExeType);
+                throw new NotSupportedException("not supported executable file type: " + _job.ExeType);
             }
 
             return new Tuple<string, string>(processFileName, processParas);
