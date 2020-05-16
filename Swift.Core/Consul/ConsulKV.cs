@@ -121,11 +121,11 @@ namespace Swift.Core.Consul
         /// </summary>
         /// <param name="key"></param>
         /// <returns></returns>
-        public static bool Delete(string key)
+        public static bool Delete(string key, CancellationToken cancellationToken = default)
         {
             return Retry(() =>
             {
-                return client.KV.Delete(key).Result.Response;
+                return client.KV.Delete(key,cancellationToken).Result.Response;
             }, 2);
         }
 

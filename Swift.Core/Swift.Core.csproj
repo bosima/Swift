@@ -26,5 +26,6 @@
       <Folder Include="OS\Linux\" />
       <Folder Include="OS\Windows\" />
       <Folder Include="OS\OSX\" />
+      <Folder Include="Election\" />
     </ItemGroup>
 </Project>

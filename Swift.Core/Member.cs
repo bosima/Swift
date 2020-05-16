@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using Swift.Core.Election;
 using Swift.Core.Log;
 using System;
 using System.Collections.Generic;
@@ -24,7 +25,7 @@ namespace Swift.Core
         /// <summary>
         /// 管理员选举
         /// </summary>
-        private ManagerElection _managerElection;
+        private ManagerElectionManager _managerElection;
 
         /// <summary>
         /// 管理员选举监控线程
@@ -230,9 +231,9 @@ namespace Swift.Core
         /// <summary>
         /// 监控管理员选举
         /// </summary>
-        private void WatchManagerElection(CancellationToken cancellationToken = default(CancellationToken))
+        private void WatchManagerElection(CancellationToken cancellationToken = default)
         {
-            _managerElection = new ManagerElection(Cluster.Name, Id);
+            _managerElection = new ManagerElectionManager(Cluster.Name, Id,null);
             _managerElection.ManagerElectCompletedEventHandler += HandleManagerElectCompleted;
             _managerElection.Watch(cancellationToken);
         }
@@ -240,15 +241,14 @@ namespace Swift.Core
         /// <summary>
         /// 处理当前成员Manager选举结果
         /// </summary>
-        /// <param name="result">If set to <c>true</c> result.</param>
-        /// <param name="currentMemberId">Current member identifier.</param>
-        private void HandleManagerElectCompleted(bool result, string currentMemberId)
+        /// <param name="result"></param>
+        private void HandleManagerElectCompleted(ManagerElectionResult result)
         {
-            LogWriter.Write($"当前成员选举Manager结果: {result}，新Manager是: {currentMemberId}");
+            LogWriter.Write($"当前成员选举Manager结果: {result.IsSuccess}，新Manager是: {result.State.CurrentManagerId}");
 
             lock (_roleTransferLocker)
             {
-                if (result)
+                if (result.IsSuccess)
                 {
                     if (_manager == null)
                     {

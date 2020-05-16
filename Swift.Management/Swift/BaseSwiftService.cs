@@ -7,11 +7,13 @@ using System.Net;
 using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
 using Swift.Core;
+using Swift.Core.Election;
 
 namespace Swift.Management.Swift
 {
     public abstract class BaseSwiftService
     {
+
         /// <summary>
         /// 获取集群所有成员
         /// </summary>
@@ -32,7 +34,7 @@ namespace Swift.Management.Swift
         /// <param name="clusterName">Cluster name.</param>
         public void RestartManagerElection(string clusterName)
         {
-            var election = new ManagerElection(clusterName, string.Empty);
+            var election = new ManagerElectionManager(clusterName, string.Empty, null);
             election.Reset();
         }
 
