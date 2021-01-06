@@ -1,5 +1,5 @@
 ﻿# 运行时基础镜像
-FROM microsoft/dotnet:2.1-aspnetcore-runtime AS base
+FROM mcr.microsoft.com/dotnet/aspnet:3.1 AS base
 WORKDIR /app
 
 # 复制sources.list
@@ -37,7 +37,7 @@ RUN set -eux && \
     consul version
 
 # 编译项目基础镜像
-FROM microsoft/dotnet:2.1-sdk AS build
+FROM mcr.microsoft.com/dotnet/sdk:3.1 AS build
 WORKDIR /src
 
 # 复制项目主文件，还原项目依赖项
