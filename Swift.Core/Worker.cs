@@ -473,6 +473,12 @@ namespace Swift.Core
             // 确保作业包存在，否则去拉取
             _member.EnsureJobPackage(job.Name, job.Version, cancellationToken);
 
+            if (job.TaskPlan == null)
+            {
+                LogWriter.Write($"作业无任务,终止本次处理：{job.Name}, {job.Id}", LogLevel.Trace);
+                return;
+            }
+
             if (job.TaskPlan.TryGetValue(_member.Id, out IEnumerable<JobTask> tasks))
             {
                 LogWriter.Write(string.Format("发现当前成员的任务"), LogLevel.Debug);
